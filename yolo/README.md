@@ -5,7 +5,10 @@ App paralela a **Turing Feedback** (`../index.html`): overlay por detección de 
 ## Qué hace
 
 - **Fuentes:** cámara en tiempo real (trasera/frontal), videos y fotos de la galería.
-- **Efectos de overlay:** Cajas, HUD, Neón, Foco (oscurece lo que no se detectó), Color (fondo en blanco y negro), Pixelar y Desenfoque.
+- **Estilos rápidos:** Clásico, HUD, Neón, Plexus, Circuito y Constelación (combinaciones listas que después se pueden ajustar).
+- **Fondo:** Normal, Foco (oscurece lo que no se detectó), Color (fondo en blanco y negro), Pixelar y Desenfoque.
+- **Recuadro:** forma (rectángulo, redondeado, esquinas, corchetes, elipse, mira o ninguno), trazo (sólido, guiones, puntos o doble), grosor, brillo y relleno.
+- **Uniones entre detecciones:** líneas rectas, arcos, curvas S o codos; conectadas en cadena, por vecinos más cercanos, en árbol (distancia mínima), todas con todas o en estrella. Se ajustan curvatura, distancia máxima, trazo, grosor, brillo, animación (flujo o pulso) y velocidad, y si salen del centro o del borde del recuadro. También se puede unir solo objetos de la misma clase, marcar los extremos con puntos y usar un degradé entre los colores de cada clase.
 - **Detección:** confianza mínima, NMS, suavizado de cajas con IDs estables, resolución del modelo (320/480/640) y filtro de las 80 clases COCO (en español).
 - **Guardar:** `Foto` descarga el cuadro actual en JPG; `REC` graba el lienzo con el overlay (MP4 o WebM según el navegador).
 
