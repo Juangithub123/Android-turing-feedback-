@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Martian+Mono:wght@400;500&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgpu.min.js"></script>
+<script src="../export-video.js"></script>
 <style>
 /* Misma estética que Turing Feedback: lienzo a pantalla completa, barra superior mínima y hoja de controles inferior. */
 :root{
@@ -103,6 +104,17 @@ body.clean canvas#view{bottom:0;height:100%}
 .toast{position:fixed;z-index:9;left:50%;top:calc(env(safe-area-inset-top,0px) + 62px);transform:translateX(-50%);max-width:calc(100% - 32px);
   background:var(--fg);color:var(--bg);padding:10px 14px;border-radius:8px;font-size:11px;line-height:1.45;transition:opacity .25s;pointer-events:none}
 .toast.off{opacity:0}
+.act{appearance:none;border:1px solid var(--accent);background:transparent;color:var(--accent);font:500 11px/1 var(--mono);padding:10px 12px;border-radius:8px;cursor:pointer;align-self:flex-start}
+.act:active{background:rgba(255,181,71,.12)}
+/* renderizado cuadro por cuadro */
+.exp{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);z-index:7;background:var(--panel);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.exp[hidden]{display:none}
+.exp-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:11px}
+.exp-h b{font-weight:500}
+.exp-h span{font-variant-numeric:tabular-nums;color:var(--accent)}
+body.exporting .sheet,body.exporting .show{display:none!important}
+body.exporting canvas#view{bottom:0;height:100%}
 @media (max-width:380px){.ibtn{padding:0 9px}.brand{font-size:15px}}
 @media (prefers-reduced-motion:reduce){.ibtn.on .dot{animation:none}.sw i,.sw i::after,.bar i{transition:none}}
 </style>
@@ -151,6 +163,12 @@ body.clean canvas#view{bottom:0;height:100%}
     <div class="chips">
       <button class="chip" id="flip">Girar cámara</button>
       <button class="chip" id="play">Pausa</button>
+    </div>
+    <div class="row" id="expRow" hidden>
+      <div class="lab">Renderizar video cuadro por cuadro</div>
+      <div class="chips" id="expFpsChips"></div>
+      <button class="act" id="expBtn">Renderizar y guardar MP4</button>
+      <p class="note">Procesa cada cuadro sin apuro (detección en todos los cuadros, con todos los efectos) y arma un MP4 fluido con el audio original. Puede tardar varios minutos: dejá la pantalla prendida y la app abierta.</p>
     </div>
     <p class="note">Tocá la imagen para pausar o reanudar un video. La cámara necesita una dirección <em>https</em> (por ejemplo GitHub Pages) y Chrome en Android. Con <em>REC</em> grabás el resultado con el overlay; con <em>Foto</em> guardás el cuadro actual.</p>
   </div>
@@ -214,6 +232,12 @@ body.clean canvas#view{bottom:0;height:100%}
 <button class="show" id="show" hidden aria-label="Mostrar controles">◐</button>
 <input type="file" id="fileVid" accept="video/*" hidden>
 <input type="file" id="fileImg" accept="image/*" hidden>
+<div class="exp" id="exp" hidden role="status">
+  <div class="exp-h"><b id="expTitle">Renderizando video…</b><span id="expPct">0%</span></div>
+  <div class="bar"><i id="expBar"></i></div>
+  <div class="note" id="expInfo">—</div>
+  <button class="act" id="expCancel">Cancelar</button>
+</div>
 <div class="toast off" id="toast" role="status"></div>
 
 <script>
@@ -257,7 +281,7 @@ const P = {
   shape:"corners", bDash:"solid", bW:2, bGlow:0, bFill:0,
   ln:"arc", net:"mst", k:2, maxD:1, curv:0.35, lDash:"dash", lW:1.5, lGlow:0.3, anim:"flow", speed:0.6,
   anchor:"edge", same:false, dots:true, grad:true,
-  conf:0.35, iou:0.45, smooth:0.5, size:640, facing:"environment",
+  conf:0.35, iou:0.45, smooth:0.5, size:640, facing:"environment", expFps:30,
   cls:Array(NC).fill(1)
 };
 const STORE_KEY = "turing-yolo-v2";
@@ -388,6 +412,7 @@ function updateTracks(dets, still){
 }
 
 /* ---------- fuentes ---------- */
+let curFile=null, exporting=false;
 let kind=null, stream=null, objURL=null, bitmap=null, mirror=false, needDetect=false, busy=false, srcName="—";
 function stopMedia(){
   if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
@@ -415,7 +440,7 @@ function pick(s){ if(s==="cam") startCamera(); else if(s==="vid") $("fileVid").c
 document.querySelectorAll("[data-src]").forEach(b=>b.addEventListener("click",()=>pick(b.dataset.src)));
 $("fileVid").addEventListener("change",async e=>{
   const f=e.target.files[0]; e.target.value=""; if(!f) return;
-  stopMedia(); objURL=URL.createObjectURL(f); video.src=objURL; mirror=false;
+  stopMedia(); curFile=f; objURL=URL.createObjectURL(f); video.src=objURL; mirror=false;
   try{ await video.play(); kind="vid"; onSource("Video"); }catch(err){ toast("No se pudo reproducir ese video."); }
 });
 $("fileImg").addEventListener("change",async e=>{
@@ -589,13 +614,13 @@ function drawLinks(list,W,H,u,time){
   });
 }
 
-function render(){
+function render(time){
   const {w:sw,h:sh}=srcDims(), k=Math.min(1,1920/Math.max(sw,sh));
-  const W=Math.round(sw*k), H=Math.round(sh*k);
+  const W=2*Math.round(sw*k/2), H=2*Math.round(sh*k/2); // pares: lo exige el codificador de video
   if(canvas.width!==W||canvas.height!==H){ canvas.width=W; canvas.height=H; }
   // unidad de trazo: legible en la pantalla del teléfono, sin exagerar en la foto guardada
   const disp=Math.min((canvas.clientWidth||W)/W,(canvas.clientHeight||H)/H)||1;
-  const u=Math.min(Math.max(Math.max(W,H)/900,0.9/disp),Math.max(W,H)/380), amt=P.amt, list=tracks, time=performance.now()/1000;
+  const u=Math.min(Math.max(Math.max(W,H)/900,0.9/disp),Math.max(W,H)/380), amt=P.amt, list=tracks;
   const fx=P.fx;
   // fondo
   if(fx==="color") drawSource(W,H,`grayscale(1) brightness(${1-amt*0.55})`);
@@ -642,7 +667,7 @@ function drawCount(u){
 let fpsN=0, fpsT=performance.now(), fpsV=0, infMs=0, lastVidT=-1, snapPending=false;
 function frame(now){
   requestAnimationFrame(frame);
-  if(!ready()) return;
+  if(!ready()||exporting) return;
   const live = kind==="cam" || (kind==="vid" && !video.paused);
   if(session && !busy && (live || needDetect)){
     const still = kind==="img" || (kind==="vid" && video.paused);
@@ -651,7 +676,7 @@ function frame(now){
       .catch(e=>{ console.error(e); toast("Error de inferencia: "+(e.message||e)); })
       .finally(()=>{ busy=false; });
   }
-  render();
+  render(now/1000);
   if(snapPending){ snapPending=false; canvas.toBlob(b=>b&&saveFile(b,"turing-yolo-"+stamp()+".jpg"),"image/jpeg",0.92); }
   fpsN++; if(now-fpsT>500){ fpsV=fpsN*1000/(now-fpsT); fpsN=0; fpsT=now; updateStats(); }
 }
@@ -692,6 +717,32 @@ document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==
 // la imagen ocupa el espacio libre sobre la hoja de controles
 const sheet=$("sheet"), setSheetH=()=>document.documentElement.style.setProperty("--sheet-h",sheet.offsetHeight+"px");
 if(window.ResizeObserver) new ResizeObserver(setSheetH).observe(sheet); setSheetH();
+/* ---------- renderizado cuadro por cuadro ---------- */
+let expCancel=false;
+$("expCancel").addEventListener("click",()=>{ expCancel=true; $("expTitle").textContent="Cancelando…"; });
+$("expBtn").addEventListener("click",async()=>{
+  if(kind!=="vid"||exporting) return;
+  if(!session){ toast("Esperá a que termine de cargar el modelo."); return; }
+  if(rec) rec.stop();
+  exporting=true; expCancel=false; document.body.classList.add("exporting"); $("exp").hidden=false;
+  $("expTitle").textContent="Renderizando video…"; $("expPct").textContent="0%"; $("expBar").style.width="0%"; $("expInfo").textContent="Preparando…";
+  $("snap").disabled=$("rec").disabled=true; wake();
+  const wasPaused=video.paused; video.pause();
+  tracks=[]; nextId=1; render(0);
+  try{
+    const res=await FrameExport.run({video,file:curFile,fps:P.expFps,canvas,
+      process:async(t)=>{ const {w,h}=srcDims(); updateTracks(postprocess(await runModel({src:video,w,h})),false); render(t); },
+      onStatus:txt=>{ $("expInfo").textContent=txt; },
+      onProgress:(i,n,eta)=>{ const pc=Math.floor(i/n*100); $("expPct").textContent=pc+"%"; $("expBar").style.width=(i/n*100)+"%";
+        $("expInfo").textContent="Cuadro "+i+" de "+n+" · faltan ~"+FrameExport.fmtTime(eta); },
+      cancelled:()=>expCancel});
+    if(res){ saveFile(res.blob,"turing-yolo-render-"+stamp()+".mp4"); if(!res.audio&&curFile) setTimeout(()=>toast("Video guardado sin audio (no se pudo leer o codificar el audio original)."),3400); }
+    else toast("Renderizado cancelado.");
+  }catch(e){ console.error(e); toast("No se pudo renderizar: "+(e.message||e),6000); }
+  exporting=false; document.body.classList.remove("exporting"); $("exp").hidden=true; $("snap").disabled=$("rec").disabled=false;
+  tracks=[]; needDetect=true; if(!wasPaused) video.play().catch(()=>{}); syncUI();
+});
+
 $("hide").addEventListener("click",()=>{ document.body.classList.add("clean"); $("show").hidden=false; });
 $("show").addEventListener("click",()=>{ document.body.classList.remove("clean"); $("show").hidden=true; });
 
@@ -725,6 +776,7 @@ PRESETS.forEach(([name,cfg])=>{ const b=document.createElement("button"); b.clas
   b.addEventListener("click",()=>{ Object.assign(P,cfg); changed(); toast("Estilo: "+name,1400); }); $("presetChips").appendChild(b); });
 chipRow($("palChips"),PALS,()=>P.pal,v=>P.pal=v);
 chipRow($("sizeChips"),SIZES,()=>P.size,v=>P.size=+v);
+chipRow($("expFpsChips"),[[24,"24 fps"],[30,"30 fps"],[60,"60 fps"]],()=>P.expFps,v=>P.expFps=+v);
 slider("fxAmt","amt",v=>Math.round(v*100)+"%");
 slider("conf","conf",v=>Math.round(v*100)+"%");
 slider("iou","iou",v=>Math.round(v*100)+"%");
@@ -753,6 +805,7 @@ function syncUI(){
   ["src","fx","box","ln","det","cls"].forEach(t=>$("panel-"+t).hidden = t!==activeTab);
   document.querySelectorAll("#srcChips .chip").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.src===kind)));
   $("flip").textContent = "Cámara: "+(P.facing==="user"?"frontal":"trasera");
+  $("expRow").hidden = kind!=="vid";
   $("play").hidden = kind!=="vid"; $("play").textContent = video.paused ? "Reproducir" : "Pausa";
 }
 syncUI();

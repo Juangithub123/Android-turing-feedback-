@@ -10,6 +10,7 @@ Tercera app del repo, junto a **Turing Feedback** (`../index.html`) y **Turing Y
 - **Estilos rápidos** que combinan las dos capas: Lidar, Térmica, Retrato, Topografía, Holograma, Niebla, Aislar y Relieve.
 - **Tocá la imagen** para elegir la distancia de enfoque en Foco, Recorte y Niebla.
 - **Guardar:** `Foto` (JPG) y `REC` (graba el resultado en MP4/WebM).
+- **Renderizar video cuadro por cuadro** (pestaña Fuente, con un video abierto): recorre el video a 24, 30 o 60 fps, corre la segmentación y la profundidad en todos los cuadros con todos los efectos, sin apuro, y arma un MP4 fluido con el audio original (WebCodecs + [mp4-muxer](https://github.com/Vanilagy/mp4-muxer)). Usa H.264/AAC si el teléfono los codifica; si no, VP9/Opus dentro del MP4. Se puede cancelar en cualquier momento.
 
 ## Modelos
 

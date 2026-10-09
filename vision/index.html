@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Martian+Mono:wght@400;500&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgpu.min.js"></script>
+<script src="../export-video.js"></script>
 <style>
 /* Misma estética que Turing Feedback: lienzo a pantalla completa, barra superior mínima y hoja de controles inferior. */
 :root{
@@ -106,6 +107,18 @@ body.clean canvas#view{bottom:0;height:100%}
 @media (max-width:380px){.ibtn{padding:0 9px}.brand{font-size:15px}}
 @media (prefers-reduced-motion:reduce){.ibtn.on .dot{animation:none}.sw i,.sw i::after,.bar i{transition:none}}
 /* propio de Turing Vision */
+.act{appearance:none;border:1px solid var(--accent);background:transparent;color:var(--accent);font:500 11px/1 var(--mono);padding:10px 12px;border-radius:8px;cursor:pointer;align-self:flex-start}
+.act:active{background:rgba(255,181,71,.12)}
+/* renderizado cuadro por cuadro */
+.exp{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);z-index:7;background:var(--panel);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.exp[hidden]{display:none}
+.exp-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:11px}
+.exp-h b{font-weight:500}
+.exp-h span{font-variant-numeric:tabular-nums;color:var(--accent)}
+body.exporting .sheet,body.exporting .show{display:none!important}
+body.exporting canvas#view{bottom:0;height:100%}
+
 .pbar{position:fixed;left:0;right:0;top:0;height:2px;z-index:8;pointer-events:none}
 .pbar i{display:block;height:100%;width:0;background:var(--accent);transition:width .15s}
 .pbar[hidden]{display:none}
@@ -153,6 +166,12 @@ body.clean canvas#view{bottom:0;height:100%}
       <button class="chip" id="flip">Girar cámara</button>
       <button class="chip" id="play">Pausa</button>
     </div>
+    <div class="row" id="expRow" hidden>
+      <div class="lab">Renderizar video cuadro por cuadro</div>
+      <div class="chips" id="expFpsChips"></div>
+      <button class="act" id="expBtn">Renderizar y guardar MP4</button>
+      <p class="note">Procesa cada cuadro sin apuro (segmentación y profundidad en todos los cuadros, con todos los efectos) y arma un MP4 fluido con el audio original. Sin GPU la profundidad tarda ~1 s por cuadro: dejá la pantalla prendida y la app abierta.</p>
+    </div>
     <p class="note">Tocá la imagen para elegir a qué distancia enfocar (en Foco, Recorte y Niebla) o para pausar un video. La cámara necesita <em>https</em> (por ejemplo GitHub Pages) y Chrome en Android.</p>
     <p class="note" id="backendNote">—</p>
   </div>
@@ -194,6 +213,12 @@ body.clean canvas#view{bottom:0;height:100%}
 <button class="show" id="show" hidden aria-label="Mostrar controles">◐</button>
 <input type="file" id="fileVid" accept="video/*" hidden>
 <input type="file" id="fileImg" accept="image/*" hidden>
+<div class="exp" id="exp" hidden role="status">
+  <div class="exp-h"><b id="expTitle">Renderizando video…</b><span id="expPct">0%</span></div>
+  <div class="bar"><i id="expBar"></i></div>
+  <div class="note" id="expInfo">—</div>
+  <button class="act" id="expCancel">Cancelar</button>
+</div>
 <div class="toast off" id="toast" role="status"></div>
 
 <script>
@@ -226,7 +251,7 @@ const GROUPS = [["per","Personas",c=>c===0],["veh","Vehículos",c=>c>=1&&c<=8],[
 const P = {
   dfx:"scan", dpal:"turbo", damt:0.8, focus:0.6, range:0.35, speed:0.5, lines:24, dinv:false, dres:266,
   sfx:"neon", spal:"class", samt:0.6, edge:0.3, soft:0.12, conf:0.35, sres:480, labels:false, confPct:false,
-  grp:{per:1,veh:1,ani:1,obj:1}, bg:"black", facing:"environment"
+  grp:{per:1,veh:1,ani:1,obj:1}, bg:"black", facing:"environment", expFps:30
 };
 const STORE_KEY = "turing-vision-v1";
 try{ const s=JSON.parse(localStorage.getItem(STORE_KEY)||"null"); if(s){ Object.assign(P,s); P.grp=Object.assign({per:1,veh:1,ani:1,obj:1},s.grp); } }catch(e){}
@@ -483,6 +508,7 @@ clearMask();
 function bindAll(){ [texSrc,texDepth,texMask,texPal].forEach((t,i)=>{ gl.activeTexture(gl.TEXTURE0+i); gl.bindTexture(gl.TEXTURE_2D,t); }); }
 
 /* ---------- fuentes ---------- */
+let curFile=null, exporting=false;
 let kind=null, stream=null, objURL=null, bitmap=null, mirror=false, srcDirty=false, needSeg=false, needDepth=false, busy=false;
 function stopMedia(){
   if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
@@ -507,7 +533,7 @@ async function startCamera(){
 function pick(s){ if(s==="cam") startCamera(); else if(s==="vid") $("fileVid").click(); else if(s==="img") $("fileImg").click(); }
 document.querySelectorAll("[data-src]").forEach(b=>b.addEventListener("click",()=>pick(b.dataset.src)));
 $("fileVid").addEventListener("change",async e=>{ const f=e.target.files[0]; e.target.value=""; if(!f) return;
-  stopMedia(); objURL=URL.createObjectURL(f); video.src=objURL; mirror=false;
+  stopMedia(); curFile=f; objURL=URL.createObjectURL(f); video.src=objURL; mirror=false;
   try{ await video.play(); kind="vid"; onSource("Video"); }catch(err){ toast("No se pudo reproducir ese video."); } });
 $("fileImg").addEventListener("change",async e=>{ const f=e.target.files[0]; e.target.value=""; if(!f) return;
   try{ const b=await createImageBitmap(f,{imageOrientation:"from-image"}); stopMedia(); bitmap=b; kind="img"; mirror=false; onSource("Foto"); }
@@ -543,7 +569,7 @@ function nextJob(live){
 function frame(now){
   requestAnimationFrame(frame);
   fpsN++; if(now-fpsT>500){ fpsV=fpsN*1000/(now-fpsT); fpsN=0; fpsT=now; updateStats(); }
-  if(!ready()) return;
+  if(!ready()||exporting) return;
   const {w:sw,h:sh}=srcDims(), live=kind==="cam"||(kind==="vid"&&!video.paused);
   if(!busy){ const job=nextJob(live);
     if(job){ busy=true; const t0=performance.now(), M=MODELS[job];
@@ -552,13 +578,20 @@ function frame(now){
         .then(()=>{ const dt=performance.now()-t0; M.ms=M.ms?M.ms*0.8+dt*0.2:dt; })
         .catch(e=>{ console.error(e); toast("Error de "+M.label+": "+(e.message||e)); })
         .finally(()=>{ busy=false; }); } }
-  const k=Math.min(1,1600/Math.max(sw,sh)), W=Math.round(sw*k), H=Math.round(sh*k);
+  draw(now/1000);
+  if(snapPending){ snapPending=false; view.toBlob(b=>b&&saveFile(b,"turing-vision-"+stamp()+".jpg"),"image/jpeg",0.92); }
+}
+requestAnimationFrame(frame);
+// dibuja el cuadro actual con los efectos; time en segundos (reloj en vivo, o tiempo del video al renderizar)
+function draw(time){
+  const {w:sw,h:sh}=srcDims();
+  const k=Math.min(1,1600/Math.max(sw,sh)), W=2*Math.round(sw*k/2), H=2*Math.round(sh*k/2); // pares para el codificador
   if(glc.width!==W||glc.height!==H){ glc.width=W; glc.height=H; }
   if(view.width!==W||view.height!==H){ view.width=W; view.height=H; }
   if(kind!=="img"||srcDirty){ gl.bindTexture(gl.TEXTURE_2D,texSrc); gl.pixelStorei(gl.UNPACK_ALIGNMENT,4);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,srcEl()); gl.generateMipmap(gl.TEXTURE_2D); srcDirty=false; }
   gl.viewport(0,0,W,H); bindAll();
-  gl.uniform2f(U("uRes"),W,H); gl.uniform1f(U("uMirror"),mirror?1:0); gl.uniform1f(U("uTime"),now/1000); gl.uniform1f(U("uSrcScale"),sw/W);
+  gl.uniform2f(U("uRes"),W,H); gl.uniform1f(U("uMirror"),mirror?1:0); gl.uniform1f(U("uTime"),time); gl.uniform1f(U("uSrcScale"),sw/W);
   gl.uniform1i(U("uDFx"),MODELS.depth.sess&&depthState.data?DFX_ID[P.dfx]:0);
   gl.uniform1i(U("uSFx"),MODELS.seg.sess?SFX_ID[P.sfx]:0);
   gl.uniform1i(U("uSPal"),SPALS.findIndex(s=>s[0]===P.spal));
@@ -570,9 +603,7 @@ function frame(now){
   gl.drawArrays(gl.TRIANGLES,0,3);
   ctx.drawImage(glc,0,0);
   if(P.labels&&segOn()&&segState.dets.length) drawLabels(W,H);
-  if(snapPending){ snapPending=false; view.toBlob(b=>b&&saveFile(b,"turing-vision-"+stamp()+".jpg"),"image/jpeg",0.92); }
 }
-requestAnimationFrame(frame);
 function colorOf(c){ return P.spal==="amber"?"#ffb547":P.spal==="white"?"#ece8dd":`hsl(${(c*137.508+38)%360},88%,62%)`; }
 function drawLabels(W,H){
   const disp=Math.min((view.clientWidth||W)/W,(view.clientHeight||H)/H)||1, u=Math.min(Math.max(Math.max(W,H)/900,0.9/disp),Math.max(W,H)/380);
@@ -616,6 +647,40 @@ $("rec").addEventListener("click",()=>{
   wake();
 });
 let wl=null; async function wake(){ try{ if(!wl&&navigator.wakeLock){ wl=await navigator.wakeLock.request("screen"); wl.addEventListener("release",()=>wl=null); } }catch(e){} }
+/* ---------- renderizado cuadro por cuadro ---------- */
+let expCancel=false;
+$("expCancel").addEventListener("click",()=>{ expCancel=true; $("expTitle").textContent="Cancelando…"; });
+$("expBtn").addEventListener("click",async()=>{
+  if(kind!=="vid"||exporting) return;
+  if(!segOn()&&!depthOn()) toast("No hay efectos activos: se va a exportar el video tal cual.");
+  if(rec) rec.stop();
+  exporting=true; expCancel=false; document.body.classList.add("exporting"); $("exp").hidden=false;
+  $("expTitle").textContent="Renderizando video…"; $("expPct").textContent="0%"; $("expBar").style.width="0%"; $("expInfo").textContent="Cargando modelos…";
+  $("snap").disabled=$("rec").disabled=true; wake();
+  const wasPaused=video.paused; video.pause();
+  try{
+    // esperar a que terminen de cargar los modelos de las capas activas
+    ensureModels(); await Promise.all(Object.values(MODELS).map(M=>M.loading));
+    if(segOn()&&!MODELS.seg.sess||depthOn()&&!MODELS.depth.sess) throw new Error("no se pudo cargar un modelo");
+    while(busy) await new Promise(r=>setTimeout(r,20)); // que termine la inferencia en vivo que estaba corriendo
+    clearMask(); depthState={data:null,w:1,h:1}; dLo=dHi=null;
+    const res=await FrameExport.run({video,file:curFile,fps:P.expFps,canvas:view,
+      process:async(t,i)=>{
+        const {w,h}=srcDims();
+        if(segOn()) await runSeg(video,w,h);
+        if(depthOn()) await runDepth(video,w,h,i>0); // suavizado temporal entre cuadros consecutivos
+        draw(t);
+      },
+      onStatus:txt=>{ $("expInfo").textContent=txt; },
+      onProgress:(i,n,eta)=>{ $("expPct").textContent=Math.floor(i/n*100)+"%"; $("expBar").style.width=(i/n*100)+"%";
+        $("expInfo").textContent="Cuadro "+i+" de "+n+" · faltan ~"+FrameExport.fmtTime(eta); },
+      cancelled:()=>expCancel});
+    if(res){ saveFile(res.blob,"turing-vision-render-"+stamp()+".mp4"); if(!res.audio&&curFile) setTimeout(()=>toast("Video guardado sin audio (no se pudo leer o codificar el audio original)."),3400); }
+    else toast("Renderizado cancelado.");
+  }catch(e){ console.error(e); toast("No se pudo renderizar: "+(e.message||e),6000); }
+  exporting=false; document.body.classList.remove("exporting"); $("exp").hidden=true; $("snap").disabled=$("rec").disabled=false;
+  needSeg=needDepth=true; if(!wasPaused) video.play().catch(()=>{}); syncUI();
+});
 const sheet=$("sheet"), setSheetH=()=>document.documentElement.style.setProperty("--sheet-h",sheet.offsetHeight+"px");
 if(window.ResizeObserver) new ResizeObserver(setSheetH).observe(sheet); setSheetH();
 $("hide").addEventListener("click",()=>{ document.body.classList.add("clean"); $("show").hidden=false; });
@@ -646,6 +711,7 @@ chipRow($("dresChips"),DRES,()=>P.dres,v=>P.dres=+v,true);
 chipRow($("sfxChips"),SFX,()=>P.sfx,v=>P.sfx=v,true);
 chipRow($("spalChips"),SPALS,()=>P.spal,v=>P.spal=v);
 chipRow($("sresChips"),SRES,()=>P.sres,v=>P.sres=+v,true);
+chipRow($("expFpsChips"),[[24,"24 fps"],[30,"30 fps"],[60,"60 fps"]],()=>P.expFps,v=>P.expFps=+v);
 chipRow($("grpChips"),GROUPS.map(g=>[g[0],g[1]]),()=>"",v=>{ P.grp[v]=P.grp[v]?0:1; },true);
 bound.push(()=>$("grpChips").querySelectorAll(".chip").forEach(b=>b.setAttribute("aria-pressed",String(!!P.grp[b.dataset.v]))));
 slider("damt","damt",pct); slider("focus","focus",pct); slider("range","range",pct); slider("speed","speed",v=>v.toFixed(2)+"×"); slider("lines","lines",v=>String(v));
@@ -657,6 +723,7 @@ function syncUI(){
   ["src","fx","depth","seg"].forEach(t=>$("panel-"+t).hidden=t!==activeTab);
   document.querySelectorAll("#srcChips .chip").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.src===kind)));
   $("flip").textContent="Cámara: "+(P.facing==="user"?"frontal":"trasera");
+  $("expRow").hidden=kind!=="vid";
   $("play").hidden=kind!=="vid"; $("play").textContent=video.paused?"Reproducir":"Pausa";
 }
 syncUI();
