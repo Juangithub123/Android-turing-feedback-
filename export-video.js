@@ -44,7 +44,8 @@ function seek(v,t){
 }
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
-/* o = { video, file, fps, canvas, process(t,i): Promise, onProgress(i,n,etaMs), cancelled(): bool, onStatus(text) }
+/* o = { video, file, fps, canvas, process(t,i): Promise, onProgress(i,n,etaMs), cancelled(): bool, onStatus(text),
+        start?, end? (segundos, para exportar solo un tramo), noAudio? }
    Devuelve un Blob MP4, o null si se canceló. El lienzo tiene que tener ancho y alto pares. */
 async function run(o){
   if(!window.VideoEncoder||!window.VideoFrame) throw new Error("este navegador no tiene WebCodecs; usá Chrome actualizado");
@@ -58,7 +59,8 @@ async function run(o){
   const W=o.canvas.width, H=o.canvas.height;
   const vsel=await pickVideo(W,H,fps);
   if(!vsel) throw new Error("este equipo no puede codificar video a "+W+"×"+H);
-  const audio=await decodeAudio(o.file), ch=audio?Math.min(2,audio.numberOfChannels):0;
+  const a0=Math.max(0,Math.min(o.start||0,dur-0.05)), a1=Math.max(a0+0.05,Math.min(o.end||dur,dur));
+  const audio=o.noAudio?null:await decodeAudio(o.file), ch=audio?Math.min(2,audio.numberOfChannels):0;
   const asel=audio?await pickAudio(ch):null;
   const muxer=new Mp4Muxer.Muxer({
     target:new Mp4Muxer.ArrayBufferTarget(),
@@ -69,13 +71,13 @@ async function run(o){
   let err=null;
   const ve=new VideoEncoder({output:(c,m)=>muxer.addVideoChunk(c,m),error:e=>{ err=e; }});
   ve.configure(vsel.cfg);
-  const n=Math.max(1,Math.floor(dur*fps+1e-6)), key=Math.max(1,Math.round(fps*2)), t0=performance.now();
+  const n=Math.max(1,Math.floor((a1-a0)*fps+1e-6)), key=Math.max(1,Math.round(fps*2)), t0=performance.now();
   v.pause();
   for(let i=0;i<n;i++){
     if(o.cancelled()){ try{ ve.close(); }catch(e){} return null; }
     if(err) throw err;
     // un milisegundo después del inicio del cuadro, para no caer en el cuadro anterior
-    await seek(v,Math.min(i/fps+0.001,Math.max(0,dur-0.01)));
+    await seek(v,Math.min(a0+i/fps+0.001,Math.max(0,dur-0.01)));
     await o.process(i/fps,i);
     const vf=new VideoFrame(o.canvas,{timestamp:Math.round(i*1e6/fps),duration:Math.round(1e6/fps)});
     ve.encode(vf,{keyFrame:i%key===0}); vf.close();
@@ -87,10 +89,10 @@ async function run(o){
   if(asel){
     const ae=new AudioEncoder({output:(c,m)=>muxer.addAudioChunk(c,m),error:e=>{ err=e; }});
     ae.configure(asel.cfg);
-    const total=Math.min(audio.length,Math.round(n/fps*48000)), CH=4800;
+    const s0=Math.round(a0*48000), total=Math.max(0,Math.min(audio.length-s0,Math.round(n/fps*48000))), CH=4800;
     for(let off=0;off<total;off+=CH){
       const k=Math.min(CH,total-off), data=new Float32Array(k*ch);
-      for(let c=0;c<ch;c++) data.set(audio.getChannelData(c).subarray(off,off+k),c*k);
+      for(let c=0;c<ch;c++) data.set(audio.getChannelData(c).subarray(s0+off,s0+off+k),c*k);
       const ad=new AudioData({format:"f32-planar",sampleRate:48000,numberOfFrames:k,numberOfChannels:ch,timestamp:Math.round(off/48000*1e6),data});
       ae.encode(ad); ad.close();
       if(ae.encodeQueueSize>8) await sleep(2);
