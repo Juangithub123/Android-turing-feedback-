@@ -19,9 +19,21 @@ En video: recortá el inicio y el fin, elegí 24, 30 o 60 fps y usá **Vista pre
 - **Clones** (video): recorta personas u objetos con YOLO11n-seg (el modelo de `../vision/`) y los repite con desfase de tiempo; copias, desfase, opacidad, color por copia (tintas riso, ámbar, arcoíris), corrimiento, mezcla y desvanecido.
 - **Archivo:** fecha y hora, coordenadas GPS (leídas del EXIF de las fotos y de los metadatos de los videos), código de tiempo, marcas de esquina y texto propio.
 
+- **Manchas:** seguimiento de manchas por movimiento (lo que cambia entre cuadros), luces o sombras, con IDs estables, recuadro, esquinas o mira, uniones (cadena, vecinos, todas), etiquetas con coordenadas e inversión adentro. Funciona en la vista previa en vivo.
+
+## Movimiento (pestaña de video)
+
+- **Seguimiento de punto:** pausá, tocá **Elegir punto** y tocá en la imagen lo que querés seguir. La app recorre el video hacia adelante y hacia atrás buscando ese punto (correlación de parches en dos escalas, con ajuste subpíxel y modelo que se actualiza de a poco) y avisa en qué porcentaje de los cuadros lo encontró.
+  - **Marcador:** mira, esquinas o punto, con estela y etiqueta con coordenadas.
+  - **Centrar encuadre:** el recorte sigue al punto (con suavizado). Necesita margen para moverse: si el punto se va lejos, la app avisa y sugiere subir el **Margen** o el **Zoom**.
+- **Estabilizar:** estima el movimiento de la cámara entre cuadros (traslación, giro y escala, descartando lo que se mueve distinto), lo suaviza y recorta para compensar el temblor.
+- **Hyperlapse:** velocidad 2× a 16×, combinable con estabilizar y centrar en un punto (hyperlapse anclado). **Mezcla de cuadros** promedia cuadros intermedios para dar desenfoque de movimiento. En hyperlapse no se copia el audio.
+
+El análisis se hace solo al exportar; con **Analizar movimiento** se puede ver antes en la vista previa.
+
 ## Looks incluidos
 
-Natural+, Tibio, Tibio corrido, Archivo, Archivo riso, Cronos, Cronos riso y Riso ámbar. Los looks propios se guardan en el teléfono con **Guardar look actual**.
+Natural+, Tibio, Tibio corrido, Archivo, Archivo riso, Vigilancia, Cronos, Cronos riso y Riso ámbar. Los looks propios se guardan en el teléfono con **Guardar look actual**.
 
 ## Notas
 
