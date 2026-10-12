@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Turing YOLO</title>
+<meta name="description" content="Overlay en tiempo real por detección de objetos (YOLO11n) para cámara, videos y fotos, corriendo en el navegador.">
+<meta name="theme-color" content="#07080a">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Martian+Mono:wght@400;500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgpu.min.js"></script>
+<script src="../export-video.js"></script>
+<style>
+/* Misma estética que Turing Feedback: lienzo a pantalla completa, barra superior mínima y hoja de controles inferior. */
+:root{
+  --bg:#07080a;
+  --panel:rgba(13,14,17,.84);
+  --line:rgba(232,226,210,.12);
+  --fg:#ece8dd;
+  --muted:#8e8a7f;
+  --accent:#ffb547;
+  --rec:#ff4d3d;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --mono:"Martian Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--fg)}
+body{font-family:var(--mono);font-size:12px;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+canvas#view{position:fixed;top:0;left:0;right:0;bottom:var(--sheet-h,0px);width:100%;height:calc(100% - var(--sheet-h,0px));display:block;background:#000;object-fit:contain;touch-action:manipulation}
+
+.top{position:fixed;top:0;left:0;right:0;z-index:5;display:flex;align-items:center;gap:8px;
+  padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 10px;
+  background:linear-gradient(to bottom,rgba(7,8,10,.75),rgba(7,8,10,0))}
+.brand{font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:-.01em;line-height:1;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand small{display:block;font-family:var(--mono);font-weight:400;font-size:9.5px;color:var(--muted);letter-spacing:.06em;margin-top:4px;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis}
+.fps{font-variant-numeric:tabular-nums;color:var(--muted);font-size:10px;text-align:right;line-height:1.35;white-space:nowrap}
+.ibtn{appearance:none;border:1px solid var(--line);background:rgba(13,14,17,.6);color:var(--fg);font:500 11px/1 var(--mono);
+  height:34px;padding:0 11px;border-radius:17px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;flex:none}
+.ibtn:disabled{opacity:.4;cursor:default}
+.ibtn:focus-visible,.chip:focus-visible,.tab:focus-visible,.sw:focus-visible,input[type=range]:focus-visible,.act:focus-visible,.big:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ibtn .dot{width:9px;height:9px;border-radius:50%;background:var(--rec)}
+.ibtn.on{border-color:var(--rec);color:var(--rec)}
+.ibtn.on .dot{animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.2}}
+
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:5;background:var(--panel);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabs{display:flex;gap:2px;padding:8px 12px 0;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{appearance:none;background:none;border:0;color:var(--muted);font:500 11px/1 var(--mono);letter-spacing:.04em;
+  padding:10px 10px 11px;border-bottom:2px solid transparent;white-space:nowrap;cursor:pointer}
+.tab[aria-selected=true]{color:var(--fg);border-bottom-color:var(--accent)}
+.panel{max-height:min(40vh,320px);overflow-y:auto;padding:12px 16px 14px;display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--line);touch-action:pan-y}
+.panel[hidden]{display:none!important}
+.row{display:flex;flex-direction:column;gap:6px}
+.lab{display:flex;justify-content:space-between;align-items:baseline;gap:8px;color:var(--muted);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase}
+.lab b{color:var(--fg);font-weight:500;font-variant-numeric:tabular-nums;text-transform:none;letter-spacing:0}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:28px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:3px;background:linear-gradient(to right,var(--accent) var(--p,50%),var(--line) var(--p,50%));border-radius:2px}
+input[type=range]::-moz-range-track{height:3px;background:var(--line);border-radius:2px}
+input[type=range]::-moz-range-progress{height:3px;background:var(--accent)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--fg);margin-top:-8.5px;border:3px solid var(--bg)}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--fg);border:3px solid var(--bg)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{appearance:none;border:1px solid var(--line);background:transparent;color:var(--fg);font:400 11px/1 var(--mono);padding:9px 11px;border-radius:999px;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.chip.sm{padding:7px 9px;font-size:10.5px}
+.sw{appearance:none;display:flex;justify-content:space-between;align-items:center;width:100%;background:none;border:0;color:var(--fg);font:500 11px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;padding:4px 0;cursor:pointer}
+.sw i{width:38px;height:22px;border-radius:11px;background:var(--line);position:relative;transition:background .15s;flex:none}
+.sw i::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--muted);transition:transform .15s,background .15s}
+.sw[aria-checked=true] i{background:rgba(255,181,71,.3)}
+.sw[aria-checked=true] i::after{transform:translateX(16px);background:var(--accent)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+.grid2>*{min-width:0}
+.note{color:var(--muted);font-size:10.5px;line-height:1.55}
+.note em{color:var(--fg);font-style:normal}
+.note a{color:var(--accent)}
+.counts{display:flex;flex-wrap:wrap;gap:6px;min-height:20px}
+.counts span{font-size:10.5px;padding:4px 8px;border-radius:4px;background:rgba(232,226,210,.07);font-variant-numeric:tabular-nums}
+.counts span b{font-weight:500;margin-right:6px}
+
+/* pantalla inicial */
+.start{position:fixed;inset:0;z-index:4;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:22px;padding:80px 16px 120px;text-align:center}
+.start[hidden]{display:none}
+.start h1{font-family:var(--display);font-weight:800;font-size:clamp(34px,10vw,56px);letter-spacing:-.03em;line-height:.95}
+.start h1 span{color:var(--accent)}
+.start p{color:var(--muted);font-size:11px;line-height:1.6;max-width:34ch}
+.bigs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;max-width:380px}
+.big{appearance:none;border:1px solid var(--line);background:rgba(232,226,210,.04);color:var(--fg);border-radius:14px;padding:18px 6px 14px;
+  font:500 11px/1 var(--mono);letter-spacing:.04em;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:10px}
+.big svg{width:26px;height:26px;stroke:var(--accent);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.big:active{background:rgba(255,181,71,.1)}
+.load{width:100%;max-width:380px;display:flex;flex-direction:column;gap:8px}
+.load[hidden]{display:none}
+.bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .15s}
+.load .note{text-align:left;display:flex;justify-content:space-between;gap:8px}
+
+.show{position:fixed;z-index:6;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:rgba(13,14,17,.55);color:var(--fg);font:500 16px/1 var(--mono);cursor:pointer}
+body.clean .top,body.clean .sheet{display:none}
+body.clean canvas#view{bottom:0;height:100%}
+.toast{position:fixed;z-index:9;left:50%;top:calc(env(safe-area-inset-top,0px) + 62px);transform:translateX(-50%);max-width:calc(100% - 32px);
+  background:var(--fg);color:var(--bg);padding:10px 14px;border-radius:8px;font-size:11px;line-height:1.45;transition:opacity .25s;pointer-events:none}
+.toast.off{opacity:0}
+.act{appearance:none;border:1px solid var(--accent);background:transparent;color:var(--accent);font:500 11px/1 var(--mono);padding:10px 12px;border-radius:8px;cursor:pointer;align-self:flex-start}
+.act:active{background:rgba(255,181,71,.12)}
+/* renderizado cuadro por cuadro */
+.exp{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);z-index:7;background:var(--panel);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.exp[hidden]{display:none}
+.exp-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:11px}
+.exp-h b{font-weight:500}
+.exp-h span{font-variant-numeric:tabular-nums;color:var(--accent)}
+body.exporting .sheet,body.exporting .show{display:none!important}
+body.exporting canvas#view{bottom:0;height:100%}
+@media (max-width:380px){.ibtn{padding:0 9px}.brand{font-size:15px}}
+@media (prefers-reduced-motion:reduce){.ibtn.on .dot{animation:none}.sw i,.sw i::after,.bar i{transition:none}}
+</style>
+</head>
+<body>
+
+<canvas id="view"></canvas>
+
+<section class="start" id="start">
+  <h1>Turing<br><span>YOLO</span></h1>
+  <p>Detección de objetos en el navegador con YOLO11n. Elegí una fuente: todo se procesa en tu teléfono, nada se sube.</p>
+  <div class="bigs">
+    <button class="big" data-src="cam"><svg viewBox="0 0 24 24"><path d="M3 8h3l2-3h8l2 3h3v11H3z"/><circle cx="12" cy="13" r="3.6"/></svg>Cámara</button>
+    <button class="big" data-src="vid"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/></svg>Video</button>
+    <button class="big" data-src="img"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-9 9"/></svg>Foto</button>
+  </div>
+  <div class="load" id="load">
+    <div class="bar"><i id="barI"></i></div>
+    <div class="note"><span id="loadT">Cargando modelo…</span><span id="loadP"></span></div>
+  </div>
+</section>
+
+<header class="top">
+  <div class="brand">Turing YOLO<small id="srcLabel">Fuente · —</small></div>
+  <span class="fps" id="fps">—</span>
+  <button class="ibtn" id="snap" aria-label="Guardar foto" disabled>Foto</button>
+  <button class="ibtn" id="rec" aria-label="Grabar video" disabled><span class="dot"></span><span id="recT">REC</span></button>
+  <button class="ibtn" id="hide" aria-label="Ocultar controles">Ocultar</button>
+</header>
+
+<section class="sheet" id="sheet">
+  <nav class="tabs" role="tablist" id="tabs">
+    <button class="tab" role="tab" data-tab="src">Fuente</button>
+    <button class="tab" role="tab" data-tab="fx">Efecto</button>
+    <button class="tab" role="tab" data-tab="box">Recuadro</button>
+    <button class="tab" role="tab" data-tab="ln">Uniones</button>
+    <button class="tab" role="tab" data-tab="det">Detección</button>
+    <button class="tab" role="tab" data-tab="cls">Clases</button>
+  </nav>
+  <div class="panel" id="panel-src" role="tabpanel">
+    <div class="chips" id="srcChips">
+      <button class="chip" data-src="cam">Cámara</button>
+      <button class="chip" data-src="vid">Video…</button>
+      <button class="chip" data-src="img">Foto…</button>
+    </div>
+    <div class="chips">
+      <button class="chip" id="flip">Girar cámara</button>
+      <button class="chip" id="play">Pausa</button>
+    </div>
+    <div class="row" id="expRow" hidden>
+      <div class="lab">Renderizar video cuadro por cuadro</div>
+      <div class="chips" id="expFpsChips"></div>
+      <button class="act" id="expBtn">Renderizar y guardar MP4</button>
+      <p class="note">Procesa cada cuadro sin apuro (detección en todos los cuadros, con todos los efectos) y arma un MP4 fluido con el audio original. Puede tardar varios minutos: dejá la pantalla prendida y la app abierta.</p>
+    </div>
+    <p class="note">Tocá la imagen para pausar o reanudar un video. La cámara necesita una dirección <em>https</em> (por ejemplo GitHub Pages) y Chrome en Android. Con <em>REC</em> grabás el resultado con el overlay; con <em>Foto</em> guardás el cuadro actual.</p>
+  </div>
+  <div class="panel" id="panel-fx" role="tabpanel" hidden>
+    <div class="row"><div class="lab">Estilos rápidos</div><div class="chips" id="presetChips"></div></div>
+    <div class="row"><div class="lab">Fondo</div><div class="chips" id="fxChips"></div></div>
+    <div class="row"><div class="lab">Intensidad del fondo <b id="fxAmtV"></b></div><input type="range" id="fxAmt" min="0" max="1" step="0.01"></div>
+    <div class="row"><div class="lab">Color</div><div class="chips" id="palChips"></div></div>
+    <div class="grid2">
+      <button class="sw" role="switch" id="swLabels">Etiquetas<i></i></button>
+      <button class="sw" role="switch" id="swConf">Confianza %<i></i></button>
+      <button class="sw" role="switch" id="swCount">Contador<i></i></button>
+      <button class="sw" role="switch" id="swIds">IDs<i></i></button>
+    </div>
+    <div class="row"><div class="lab">Etiqueta</div><div class="chips" id="lblChips"></div></div>
+  </div>
+  <div class="panel" id="panel-box" role="tabpanel" hidden>
+    <div class="row"><div class="lab">Forma</div><div class="chips" id="shapeChips"></div></div>
+    <div class="row"><div class="lab">Trazo</div><div class="chips" id="bDashChips"></div></div>
+    <div class="grid2">
+      <div class="row"><div class="lab">Grosor <b id="bWV"></b></div><input type="range" id="bW" min="0.5" max="6" step="0.1"></div>
+      <div class="row"><div class="lab">Brillo <b id="bGlowV"></b></div><input type="range" id="bGlow" min="0" max="1" step="0.01"></div>
+    </div>
+    <div class="row"><div class="lab">Relleno <b id="bFillV"></b></div><input type="range" id="bFill" min="0" max="0.6" step="0.01"></div>
+  </div>
+  <div class="panel" id="panel-ln" role="tabpanel" hidden>
+    <div class="row"><div class="lab">Tipo de línea</div><div class="chips" id="lnChips"></div></div>
+    <div class="row"><div class="lab">Cómo se conectan</div><div class="chips" id="netChips"></div></div>
+    <div class="grid2">
+      <div class="row"><div class="lab">Vecinos <b id="kV"></b></div><input type="range" id="k" min="1" max="4" step="1"></div>
+      <div class="row"><div class="lab">Distancia máx. <b id="maxDV"></b></div><input type="range" id="maxD" min="0.1" max="1" step="0.01"></div>
+    </div>
+    <div class="row"><div class="lab">Curvatura <b id="curvV"></b></div><input type="range" id="curv" min="-1" max="1" step="0.01"></div>
+    <div class="row"><div class="lab">Trazo</div><div class="chips" id="lDashChips"></div></div>
+    <div class="grid2">
+      <div class="row"><div class="lab">Grosor <b id="lWV"></b></div><input type="range" id="lW" min="0.5" max="6" step="0.1"></div>
+      <div class="row"><div class="lab">Brillo <b id="lGlowV"></b></div><input type="range" id="lGlow" min="0" max="1" step="0.01"></div>
+    </div>
+    <div class="row"><div class="lab">Animación</div><div class="chips" id="animChips"></div></div>
+    <div class="row"><div class="lab">Velocidad <b id="speedV"></b></div><input type="range" id="speed" min="0.1" max="2" step="0.05"></div>
+    <div class="row"><div class="lab">Desde</div><div class="chips" id="anchorChips"></div></div>
+    <div class="grid2">
+      <button class="sw" role="switch" id="swSame">Misma clase<i></i></button>
+      <button class="sw" role="switch" id="swDots">Puntos<i></i></button>
+      <button class="sw" role="switch" id="swGrad">Degradé<i></i></button>
+    </div>
+  </div>
+  <div class="panel" id="panel-det" role="tabpanel" hidden>
+    <div class="counts" id="counts"></div>
+    <div class="row"><div class="lab">Confianza mínima <b id="confV"></b></div><input type="range" id="conf" min="0.05" max="0.95" step="0.01"></div>
+    <div class="row"><div class="lab">Solapamiento (NMS) <b id="iouV"></b></div><input type="range" id="iou" min="0.1" max="0.9" step="0.01"></div>
+    <div class="row"><div class="lab">Suavizado de cajas <b id="smoothV"></b></div><input type="range" id="smooth" min="0" max="0.9" step="0.01"></div>
+    <div class="row"><div class="lab">Resolución del modelo</div><div class="chips" id="sizeChips"></div></div>
+    <p class="note" id="backendNote">—</p>
+  </div>
+  <div class="panel" id="panel-cls" role="tabpanel" hidden>
+    <div class="chips" id="grpChips"></div>
+    <div class="chips" id="clsChips"></div>
+  </div>
+</section>
+<button class="show" id="show" hidden aria-label="Mostrar controles">◐</button>
+<input type="file" id="fileVid" accept="video/*" hidden>
+<input type="file" id="fileImg" accept="image/*" hidden>
+<div class="exp" id="exp" hidden role="status">
+  <div class="exp-h"><b id="expTitle">Renderizando video…</b><span id="expPct">0%</span></div>
+  <div class="bar"><i id="expBar"></i></div>
+  <div class="note" id="expInfo">—</div>
+  <button class="act" id="expCancel">Cancelar</button>
+</div>
+<div class="toast off" id="toast" role="status"></div>
+
+<script>
+(() => {
+"use strict";
+const $ = id => document.getElementById(id);
+const canvas = $("view");
+const ctx = canvas.getContext("2d");
+const video = document.createElement("video");
+video.muted = true; video.playsInline = true; video.loop = true; video.setAttribute("playsinline", "");
+
+const MODEL_URL = "yolo11n.onnx";
+const ORT_DIST = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
+
+/* ---------- clases COCO ---------- */
+const NAMES = ["persona","bicicleta","auto","moto","avión","colectivo","tren","camión","barco","semáforo",
+  "hidrante","señal de pare","parquímetro","banco","pájaro","gato","perro","caballo","oveja","vaca",
+  "elefante","oso","cebra","jirafa","mochila","paraguas","cartera","corbata","valija","frisbee",
+  "esquís","snowboard","pelota","barrilete","bate","guante","skate","tabla de surf","raqueta","botella",
+  "copa","taza","tenedor","cuchillo","cuchara","bol","banana","manzana","sándwich","naranja",
+  "brócoli","zanahoria","pancho","pizza","dona","torta","silla","sillón","planta","cama",
+  "mesa","inodoro","tele","notebook","mouse","control remoto","teclado","celular","microondas","horno",
+  "tostadora","pileta","heladera","libro","reloj","florero","tijera","peluche","secador","cepillo de dientes"];
+const NC = NAMES.length;
+const range = (a,b) => Array.from({length:b-a+1},(_,i)=>a+i);
+const GROUPS = [
+  ["Personas", [0]],
+  ["Vehículos", range(1,8)],
+  ["Calle", range(9,13)],
+  ["Animales", range(14,23)],
+  ["Accesorios", range(24,28)],
+  ["Deporte", range(29,38)],
+  ["Cocina", range(39,45)],
+  ["Comida", range(46,55)],
+  ["Casa", range(56,79)]
+];
+
+/* ---------- estado ---------- */
+const P = {
+  fx:"none", pal:"class", amt:0.7, labels:true, confPct:true, count:true, ids:false, lbl:"ghost",
+  shape:"corners", bDash:"solid", bW:2, bGlow:0, bFill:0,
+  ln:"arc", net:"mst", k:2, maxD:1, curv:0.35, lDash:"dash", lW:1.5, lGlow:0.3, anim:"flow", speed:0.6,
+  anchor:"edge", same:false, dots:true, grad:true,
+  conf:0.35, iou:0.45, smooth:0.5, size:640, facing:"environment", expFps:30,
+  cls:Array(NC).fill(1)
+};
+const STORE_KEY = "turing-yolo-v2";
+let hadStore=false;
+try{ const s=JSON.parse(localStorage.getItem(STORE_KEY)||"null"); if(s){ hadStore=true; Object.assign(P,s); if(!Array.isArray(P.cls)||P.cls.length!==NC) P.cls=Array(NC).fill(1); } }catch(e){}
+let saveT; function persist(){ clearTimeout(saveT); saveT=setTimeout(()=>{ try{ localStorage.setItem(STORE_KEY,JSON.stringify(P)); }catch(e){} },300); }
+
+const FX = [["none","Normal"],["focus","Foco"],["color","Color"],["pixel","Pixelar"],["blur","Desenfoque"]];
+const SHAPES = [["rect","Rectángulo"],["round","Redondeado"],["corners","Esquinas"],["brackets","Corchetes"],["ellipse","Elipse"],["reticle","Mira"],["none","Ninguno"]];
+const DASHES = [["solid","Sólido"],["dash","Guiones"],["dots","Puntos"],["double","Doble"]];
+const LINES = [["none","Ninguna"],["straight","Rectas"],["arc","Arcos"],["s","Curvas S"],["elbow","Codos"]];
+const NETS = [["chain","Cadena"],["near","Vecinos"],["mst","Árbol"],["all","Todas"],["star","Estrella"]];
+const ANIMS = [["none","Quieta"],["flow","Flujo"],["pulse","Pulso"]];
+const ANCHORS = [["center","Centro"],["edge","Borde"]];
+const LBLS = [["block","Bloque"],["ghost","Oscura"]];
+// estilos rápidos: combinaciones listas de recuadro + uniones
+const PRESETS = [
+  ["Clásico",    {fx:"none",shape:"rect",bDash:"solid",bW:2.2,bGlow:0,bFill:0.15,lbl:"block",ln:"none"}],
+  ["HUD",        {fx:"none",shape:"corners",bDash:"solid",bW:2,bGlow:0,bFill:0,lbl:"ghost",ln:"straight",net:"mst",lDash:"dash",lW:1.2,lGlow:0,anim:"flow",anchor:"edge",dots:true,grad:false}],
+  ["Neón",       {fx:"none",shape:"round",bDash:"solid",bW:2.6,bGlow:0.75,bFill:0.08,lbl:"ghost",ln:"arc",net:"chain",curv:0.4,lDash:"solid",lW:2,lGlow:0.8,anim:"pulse",anchor:"edge",dots:false,grad:true}],
+  ["Plexus",     {fx:"focus",amt:0.5,shape:"none",bFill:0,lbl:"ghost",ln:"straight",net:"all",maxD:0.6,lDash:"solid",lW:1,lGlow:0.2,anim:"none",anchor:"center",dots:true,grad:true}],
+  ["Circuito",   {fx:"none",pal:"mono",shape:"brackets",bDash:"solid",bW:2,bGlow:0.3,bFill:0,lbl:"ghost",ln:"elbow",net:"mst",lDash:"solid",lW:1.6,lGlow:0.4,anim:"pulse",anchor:"edge",dots:true,grad:false}],
+  ["Constelación",{fx:"color",amt:0.6,shape:"reticle",bDash:"solid",bW:1.4,bGlow:0.4,bFill:0,lbl:"ghost",ln:"arc",net:"near",k:2,maxD:1,curv:0.25,lDash:"dots",lW:2,lGlow:0.5,anim:"flow",anchor:"edge",dots:true,grad:true}]
+];
+const PALS = [["class","Por clase"],["amber","Ámbar"],["white","Blanco"],["mono","Verde HUD"]];
+const SIZES = [[320,"320 · rápido"],[480,"480"],[640,"640 · preciso"]];
+
+let toastT;
+function toast(msg, ms=3200){ const t=$("toast"); t.textContent=msg; t.classList.remove("off"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.add("off"),ms); }
+
+/* ---------- modelo ---------- */
+let session=null, backend="", inName="", outName="";
+async function fetchModel(){
+  let cache=null;
+  try{ cache = await caches.open("turing-yolo-model"); const hit = await cache.match(MODEL_URL); if(hit) return new Uint8Array(await hit.arrayBuffer()); }catch(e){ cache=null; }
+  const res = await fetch(MODEL_URL);
+  if(!res.ok) throw new Error("HTTP "+res.status);
+  const total = +res.headers.get("content-length") || 0;
+  const reader = res.body.getReader(); const parts=[]; let got=0;
+  for(;;){ const {done,value}=await reader.read(); if(done) break; parts.push(value); got+=value.length;
+    if(total){ $("barI").style.width=(got/total*100).toFixed(1)+"%"; $("loadP").textContent=Math.round(got/total*100)+"%"; }
+    else $("loadP").textContent=(got/1048576).toFixed(1)+" MB"; }
+  const buf = new Uint8Array(got); let o=0; for(const p of parts){ buf.set(p,o); o+=p.length; }
+  if(cache){ try{ await cache.put(MODEL_URL,new Response(buf,{headers:{"content-type":"application/octet-stream"}})); }catch(e){} }
+  return buf;
+}
+async function initModel(){
+  if(!window.ort){ $("loadT").textContent="No se pudo cargar ONNX Runtime (¿sin conexión?)."; return; }
+  ort.env.wasm.wasmPaths = ORT_DIST;
+  let buf;
+  try{ buf = await fetchModel(); }catch(e){ $("loadT").textContent="No se pudo descargar el modelo ("+e.message+")."; return; }
+  $("barI").style.width="100%"; $("loadT").textContent="Preparando…"; $("loadP").textContent="";
+  const eps = [];
+  if(navigator.gpu){ try{ if(await navigator.gpu.requestAdapter()) eps.push("webgpu"); }catch(e){} }
+  eps.push("wasm");
+  for(const ep of eps){
+    try{
+      ort.env.wasm.proxy = ep==="wasm"; // en CPU, la inferencia corre en un worker y no traba la interfaz
+      const s = await ort.InferenceSession.create(buf,{executionProviders:[ep],graphOptimizationLevel:"all"});
+      inName=s.inputNames[0]; outName=s.outputNames[0];
+      session=s; backend=ep;
+      if(ep!=="webgpu" && !hadStore) P.size=320; // en CPU arrancamos liviano
+      await runModel(warmCanvas(P.size)); // calentamiento: compila shaders/kernels
+      break;
+    }catch(e){ console.warn("EP "+ep+" falló",e); session=null; }
+  }
+  if(!session){ $("loadT").textContent="Este navegador no pudo ejecutar el modelo."; return; }
+  $("load").hidden = true;
+  $("backendNote").innerHTML = "Motor: <em>"+(backend==="webgpu"?"WebGPU (GPU)":"WebAssembly (CPU)")+"</em> · modelo YOLO11n (COCO, 80 clases)."+
+    (backend==="webgpu"?"":" Para más velocidad usá Chrome actualizado con WebGPU, o bajá la resolución a 320.");
+  syncUI(); needDetect=true;
+}
+function warmCanvas(s){ const c=document.createElement("canvas"); c.width=c.height=s; return {src:c,w:s,h:s}; }
+
+/* ---------- preproceso / inferencia ---------- */
+const lb = document.createElement("canvas");
+const lbx = lb.getContext("2d",{willReadFrequently:true});
+let inBuf=null;
+async function runModel({src,w,h}){
+  const S = P.size;
+  if(lb.width!==S){ lb.width=lb.height=S; }
+  // con el worker de WASM el buffer se transfiere y queda vacío: se reasigna
+  if(!inBuf||inBuf.length!==3*S*S) inBuf=new Float32Array(3*S*S);
+  const r = Math.min(S/w,S/h), nw=Math.round(w*r), nh=Math.round(h*r), dx=(S-nw)>>1, dy=(S-nh)>>1;
+  lbx.fillStyle="rgb(114,114,114)"; lbx.fillRect(0,0,S,S);
+  lbx.drawImage(src,0,0,w,h,dx,dy,nw,nh);
+  const px = lbx.getImageData(0,0,S,S).data, A=S*S;
+  for(let i=0,j=0;i<A;i++,j+=4){ inBuf[i]=px[j]/255; inBuf[i+A]=px[j+1]/255; inBuf[i+2*A]=px[j+2]/255; }
+  const out = (await session.run({[inName]:new ort.Tensor("float32",inBuf,[1,3,S,S])}))[outName];
+  return {data:out.data, dims:out.dims, r, dx, dy, w, h};
+}
+function iouOf(a,b){
+  const x1=Math.max(a.x,b.x), y1=Math.max(a.y,b.y), x2=Math.min(a.x+a.w,b.x+b.w), y2=Math.min(a.y+a.h,b.y+b.h);
+  const i=Math.max(0,x2-x1)*Math.max(0,y2-y1); return i/(a.w*a.h+b.w*b.h-i+1e-9);
+}
+// salida YOLO11: [1, 4+80, N] → cajas normalizadas 0..1 respecto de la fuente
+function postprocess({data,dims,r,dx,dy,w,h}){
+  const C=dims[1], N=dims[2], nc=C-4, cand=[];
+  for(let i=0;i<N;i++){
+    let best=-1, bs=P.conf;
+    for(let c=0;c<nc;c++){ const s=data[(4+c)*N+i]; if(s>bs && P.cls[c]){ bs=s; best=c; } }
+    if(best<0) continue;
+    const cx=(data[i]-dx)/r, cy=(data[N+i]-dy)/r, bw=data[2*N+i]/r, bh=data[3*N+i]/r;
+    const x=Math.max(0,cx-bw/2), y=Math.max(0,cy-bh/2), x2=Math.min(w,cx+bw/2), y2=Math.min(h,cy+bh/2);
+    if(x2-x<2||y2-y<2) continue;
+    cand.push({x:x/w,y:y/h,w:(x2-x)/w,h:(y2-y)/h,score:bs,cls:best});
+  }
+  cand.sort((a,b)=>b.score-a.score);
+  const keep=[];
+  for(const d of cand){ if(keep.length>=100) break; if(!keep.some(k=>k.cls===d.cls&&iouOf(k,d)>P.iou)) keep.push(d); }
+  return keep;
+}
+
+/* ---------- seguimiento simple (suaviza y da IDs estables) ---------- */
+let tracks=[], nextId=1;
+function updateTracks(dets, still){
+  if(still){ tracks=dets.map(d=>({...d,id:nextId++,miss:0})); return; }
+  const used=new Set(), a=1-P.smooth;
+  for(const t of tracks){
+    let bi=-1, bv=0.25;
+    dets.forEach((d,i)=>{ if(used.has(i)||d.cls!==t.cls) return; const v=iouOf(t,d); if(v>bv){ bv=v; bi=i; } });
+    if(bi>=0){ const d=dets[bi]; used.add(bi);
+      t.x+=(d.x-t.x)*a; t.y+=(d.y-t.y)*a; t.w+=(d.w-t.w)*a; t.h+=(d.h-t.h)*a; t.score=d.score; t.miss=0; }
+    else t.miss++;
+  }
+  tracks=tracks.filter(t=>t.miss<=2);
+  dets.forEach((d,i)=>{ if(!used.has(i)) tracks.push({...d,id:nextId++,miss:0}); });
+}
+
+/* ---------- fuentes ---------- */
+let curFile=null, exporting=false;
+let kind=null, stream=null, objURL=null, bitmap=null, mirror=false, needDetect=false, busy=false, srcName="—";
+function stopMedia(){
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+  video.pause(); video.removeAttribute("src"); video.srcObject=null; video.load();
+  if(objURL){ URL.revokeObjectURL(objURL); objURL=null; }
+  if(bitmap){ bitmap.close&&bitmap.close(); bitmap=null; }
+  kind=null; tracks=[];
+}
+function srcDims(){ return kind==="img" ? {w:bitmap.width,h:bitmap.height} : {w:video.videoWidth,h:video.videoHeight}; }
+function srcEl(){ return kind==="img" ? bitmap : video; }
+function ready(){ return kind==="img" ? !!bitmap : (kind && video.readyState>=2 && video.videoWidth>0); }
+function onSource(name){
+  srcName=name; $("srcLabel").textContent="Fuente · "+name; $("start").hidden=true;
+  $("snap").disabled=false; $("rec").disabled=false; needDetect=true; syncUI();
+}
+async function startCamera(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ toast("La cámara necesita https y un navegador compatible (Chrome en Android)."); return; }
+  try{
+    const s = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:P.facing},width:{ideal:1280},height:{ideal:720}},audio:false});
+    stopMedia(); stream=s; video.srcObject=s; await video.play(); kind="cam"; mirror = P.facing==="user";
+    onSource(P.facing==="user"?"Cámara frontal":"Cámara trasera");
+  }catch(e){ toast("No se pudo abrir la cámara. Revisá los permisos y que la página esté en https."); }
+}
+function pick(s){ if(s==="cam") startCamera(); else if(s==="vid") $("fileVid").click(); else if(s==="img") $("fileImg").click(); }
+document.querySelectorAll("[data-src]").forEach(b=>b.addEventListener("click",()=>pick(b.dataset.src)));
+$("fileVid").addEventListener("change",async e=>{
+  const f=e.target.files[0]; e.target.value=""; if(!f) return;
+  stopMedia(); curFile=f; objURL=URL.createObjectURL(f); video.src=objURL; mirror=false;
+  try{ await video.play(); kind="vid"; onSource("Video"); }catch(err){ toast("No se pudo reproducir ese video."); }
+});
+$("fileImg").addEventListener("change",async e=>{
+  const f=e.target.files[0]; e.target.value=""; if(!f) return;
+  try{ const b=await createImageBitmap(f,{imageOrientation:"from-image"}); stopMedia(); bitmap=b; kind="img"; mirror=false; onSource("Foto"); }
+  catch(err){ toast("No se pudo abrir esa imagen."); }
+});
+$("flip").addEventListener("click",()=>{ P.facing = P.facing==="user"?"environment":"user"; persist(); if(kind==="cam") startCamera(); else syncUI(); });
+function togglePlay(){ if(kind!=="vid") return; if(video.paused) video.play(); else { video.pause(); needDetect=true; } syncUI(); }
+$("play").addEventListener("click",togglePlay);
+canvas.addEventListener("click",togglePlay);
+video.addEventListener("seeked",()=>needDetect=true);
+
+/* ---------- dibujo ---------- */
+const tiny=document.createElement("canvas"), tctx=tiny.getContext("2d");
+const hasFilter = "filter" in ctx;
+function colorOf(c,alpha=1){
+  switch(P.pal){
+    case "amber": return `rgba(255,181,71,${alpha})`;
+    case "white": return `rgba(236,232,221,${alpha})`;
+    case "mono":  return `rgba(64,255,140,${alpha})`;
+    default: return `hsla(${(c*137.508+38)%360},88%,62%,${alpha})`;
+  }
+}
+function labelOf(t){
+  let s=""; if(P.ids) s+="#"+t.id+" "; s+=NAMES[t.cls]; if(P.confPct) s+=" "+Math.round(t.score*100)+"%"; return s;
+}
+function boxPx(t,W,H){ const x = mirror ? 1-t.x-t.w : t.x; return {x:x*W,y:t.y*H,w:t.w*W,h:t.h*H}; }
+function drawSource(W,H,filter){
+  ctx.save();
+  if(filter && hasFilter) ctx.filter=filter;
+  if(mirror){ ctx.translate(W,0); ctx.scale(-1,1); }
+  ctx.drawImage(srcEl(),0,0,W,H);
+  ctx.restore();
+}
+// redibuja la fuente sin filtro dentro de la unión de los recuadros
+function redrawBoxes(list,W,H){ ctx.save(); ctx.beginPath(); for(const t of list){ const b=boxPx(t,W,H); ctx.rect(b.x,b.y,b.w,b.h); } ctx.clip(); drawSource(W,H); ctx.restore(); }
+function tag(text,x,y,col,u,style){
+  const fs=Math.max(10,12*u); ctx.font=`500 ${fs}px "Martian Mono",ui-monospace,monospace`;
+  const tw=ctx.measureText(text).width, ph=fs*0.45, th=fs+ph*1.4;
+  let ty = y-th; if(ty<0) ty=y; const tx=Math.min(Math.max(0,x),ctx.canvas.width-tw-ph*2);
+  if(style==="ghost"){ ctx.fillStyle="rgba(7,8,10,.72)"; ctx.fillRect(tx,ty,tw+ph*2,th); ctx.fillStyle=col; }
+  else { ctx.fillStyle=col; ctx.fillRect(tx,ty,tw+ph*2,th); ctx.fillStyle="#07080a"; }
+  ctx.textBaseline="middle"; ctx.fillText(text,tx+ph,ty+th/2+fs*0.04);
+}
+/* trazo con estilo: sólido, guiones, puntos o doble; brillo opcional */
+function strokeStyled(path,col,glowCol,lw,dash,glow,u,offset=0){
+  ctx.save(); ctx.lineJoin="round"; ctx.lineCap = dash==="dots" ? "round" : "butt";
+  ctx.setLineDash(dash==="dash" ? [lw*4,lw*3] : dash==="dots" ? [0.01,lw*2.6] : []);
+  ctx.lineDashOffset=offset;
+  const w = dash==="double" ? lw*3 : lw;
+  ctx.strokeStyle=col; ctx.lineWidth=w;
+  if(glow>0){ ctx.shadowColor=glowCol; ctx.shadowBlur=glow*30*u; ctx.stroke(path); }
+  ctx.shadowBlur=0; ctx.stroke(path);
+  if(dash==="double"){ ctx.strokeStyle="rgba(7,8,10,.9)"; ctx.lineWidth=lw; ctx.stroke(path); }
+  ctx.restore();
+}
+function shapePath(b,shape){
+  const p=new Path2D(), {x,y,w,h}=b, cx=x+w/2, cy=y+h/2, m=Math.min(w,h);
+  switch(shape){
+    case "rect": p.rect(x,y,w,h); break;
+    case "round": if(p.roundRect) p.roundRect(x,y,w,h,m*0.18); else p.rect(x,y,w,h); break;
+    case "ellipse": p.ellipse(cx,cy,w/2,h/2,0,0,Math.PI*2); break;
+    case "corners": { const l=m*0.24;
+      p.moveTo(x,y+l); p.lineTo(x,y); p.lineTo(x+l,y);
+      p.moveTo(x+w-l,y); p.lineTo(x+w,y); p.lineTo(x+w,y+l);
+      p.moveTo(x+w,y+h-l); p.lineTo(x+w,y+h); p.lineTo(x+w-l,y+h);
+      p.moveTo(x+l,y+h); p.lineTo(x,y+h); p.lineTo(x,y+h-l); break; }
+    case "brackets": { const l=Math.min(w*0.14,m*0.2);
+      p.moveTo(x+l,y); p.lineTo(x,y); p.lineTo(x,y+h); p.lineTo(x+l,y+h);
+      p.moveTo(x+w-l,y); p.lineTo(x+w,y); p.lineTo(x+w,y+h); p.lineTo(x+w-l,y+h); break; }
+    case "reticle": { const r=m*0.38, t=m*0.16;
+      p.moveTo(cx+r,cy); p.arc(cx,cy,r,0,Math.PI*2);
+      p.moveTo(cx-r-t,cy); p.lineTo(cx-r+t,cy); p.moveTo(cx+r-t,cy); p.lineTo(cx+r+t,cy);
+      p.moveTo(cx,cy-r-t); p.lineTo(cx,cy-r+t); p.moveTo(cx,cy+r-t); p.lineTo(cx,cy+r+t);
+      p.moveTo(cx+m*0.03,cy); p.arc(cx,cy,m*0.03,0,Math.PI*2); break; }
+  }
+  return p;
+}
+function fillPath(b,shape){
+  const p=new Path2D(), {x,y,w,h}=b, m=Math.min(w,h);
+  if(shape==="ellipse") p.ellipse(x+w/2,y+h/2,w/2,h/2,0,0,Math.PI*2);
+  else if(shape==="reticle") p.arc(x+w/2,y+h/2,m*0.38,0,Math.PI*2);
+  else if(shape==="round"&&p.roundRect) p.roundRect(x,y,w,h,m*0.18);
+  else p.rect(x,y,w,h);
+  return p;
+}
+
+/* ---------- uniones entre detecciones ---------- */
+function buildEdges(nodes,diag){
+  const maxD = P.maxD>=0.995 ? Infinity : P.maxD*diag;
+  const dist=(a,b)=>Math.hypot(a.cx-b.cx,a.cy-b.cy);
+  const groups = P.same ? [...nodes.reduce((m,n)=>m.set(n.cls,[...(m.get(n.cls)||[]),n]),new Map()).values()] : [nodes];
+  const edges=[], seen=new Set();
+  const add=(a,b)=>{ if(a===b||dist(a,b)>maxD) return; const [p,q]=a.id<b.id?[a,b]:[b,a]; const key=p.id+"-"+q.id; if(!seen.has(key)){ seen.add(key); edges.push([p,q]); } };
+  for(const g of groups){
+    if(g.length<2) continue;
+    if(P.net==="chain"){
+      const left=[...g].sort((a,b)=>a.cx-b.cx); let cur=left.shift();
+      while(left.length){ let bi=0, bd=Infinity; left.forEach((n,i)=>{ const d=dist(cur,n); if(d<bd){ bd=d; bi=i; } }); const nx=left.splice(bi,1)[0]; add(cur,nx); cur=nx; }
+    } else if(P.net==="near"){
+      for(const a of g) g.filter(b=>b!==a).sort((p,q)=>dist(a,p)-dist(a,q)).slice(0,P.k).forEach(b=>add(a,b));
+    } else if(P.net==="mst"){
+      const inT=[g[0]], out=g.slice(1);
+      while(out.length){ let bi=-1, bj=-1, bd=Infinity;
+        inT.forEach((a,i)=>out.forEach((b,j)=>{ const d=dist(a,b); if(d<bd){ bd=d; bi=i; bj=j; } }));
+        const b=out.splice(bj,1)[0]; add(inT[bi],b); inT.push(b); }
+    } else if(P.net==="all"){
+      for(let i=0;i<g.length;i++) for(let j=i+1;j<g.length;j++) add(g[i],g[j]);
+    } else if(P.net==="star"){
+      const hub=g.reduce((a,b)=>b.score>a.score?b:a); g.forEach(n=>add(hub,n));
+    }
+  }
+  return edges;
+}
+// punto donde la línea entre centros sale del recuadro (rectángulo o elipse según la forma)
+function anchorPt(n,tx,ty){
+  if(P.anchor!=="edge") return {x:n.cx,y:n.cy};
+  const dx=tx-n.cx, dy=ty-n.cy; if(!dx&&!dy) return {x:n.cx,y:n.cy};
+  let hw=n.b.w/2, hh=n.b.h/2, t;
+  if(P.shape==="reticle"){ hw=hh=Math.min(n.b.w,n.b.h)*0.38; }
+  if(P.shape==="ellipse"||P.shape==="reticle") t=1/Math.hypot(dx/hw,dy/hh);
+  else t=Math.min(dx?hw/Math.abs(dx):Infinity, dy?hh/Math.abs(dy):Infinity);
+  // si el otro centro cae dentro de este recuadro (se superponen), la línea sale del centro
+  if(t>=1) return {x:n.cx,y:n.cy};
+  return {x:n.cx+dx*t,y:n.cy+dy*t};
+}
+// geometría de cada tipo de línea: camino para dibujar y función de punto para el pulso
+function edgeGeom(p0,p1,u){
+  const dx=p1.x-p0.x, dy=p1.y-p0.y, len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len, c=P.curv, path=new Path2D();
+  path.moveTo(p0.x,p0.y);
+  if(P.ln==="arc"){
+    const qx=p0.x+dx/2+nx*c*len*0.5, qy=p0.y+dy/2+ny*c*len*0.5; path.quadraticCurveTo(qx,qy,p1.x,p1.y);
+    return {path,at:t=>({x:(1-t)*(1-t)*p0.x+2*(1-t)*t*qx+t*t*p1.x, y:(1-t)*(1-t)*p0.y+2*(1-t)*t*qy+t*t*p1.y})};
+  }
+  if(P.ln==="s"){
+    const k=c*len*0.45, ax=p0.x+dx/3+nx*k, ay=p0.y+dy/3+ny*k, bx=p0.x+dx*2/3-nx*k, by=p0.y+dy*2/3-ny*k;
+    path.bezierCurveTo(ax,ay,bx,by,p1.x,p1.y);
+    const B=(a,b,cc,d,t)=>(1-t)**3*a+3*(1-t)**2*t*b+3*(1-t)*t*t*cc+t**3*d;
+    return {path,at:t=>({x:B(p0.x,ax,bx,p1.x,t),y:B(p0.y,ay,by,p1.y,t)})};
+  }
+  if(P.ln==="elbow"){
+    // horizontal-vertical-horizontal (o al revés si la curvatura es negativa), con esquinas redondeadas
+    const H=c>=0, pts = H ? [p0,{x:p0.x+dx/2,y:p0.y},{x:p0.x+dx/2,y:p1.y},p1] : [p0,{x:p0.x,y:p0.y+dy/2},{x:p1.x,y:p0.y+dy/2},p1];
+    const r=Math.min(14*u*(0.3+Math.abs(c)),Math.abs(dx)/2,Math.abs(dy)/2);
+    for(let i=1;i<3;i++) path.arcTo(pts[i].x,pts[i].y,pts[i+1].x,pts[i+1].y,r);
+    path.lineTo(p1.x,p1.y);
+    const seg=[0,1,2].map(i=>Math.hypot(pts[i+1].x-pts[i].x,pts[i+1].y-pts[i].y)), tot=seg[0]+seg[1]+seg[2]||1;
+    return {path,at:t=>{ let d=t*tot; for(let i=0;i<3;i++){ if(d<=seg[i]||i===2){ const f=seg[i]?Math.min(1,d/seg[i]):0; return {x:pts[i].x+(pts[i+1].x-pts[i].x)*f,y:pts[i].y+(pts[i+1].y-pts[i].y)*f}; } d-=seg[i]; } }};
+  }
+  path.lineTo(p1.x,p1.y);
+  return {path,at:t=>({x:p0.x+dx*t,y:p0.y+dy*t})};
+}
+function drawLinks(list,W,H,u,time){
+  if(P.ln==="none"||list.length<2) return;
+  const nodes=list.map(t=>{ const b=boxPx(t,W,H); return {id:t.id,cls:t.cls,score:t.score,b,cx:b.x+b.w/2,cy:b.y+b.h/2}; });
+  const edges=buildEdges(nodes,Math.hypot(W,H)), lw=Math.max(0.75,P.lW*u);
+  edges.forEach(([a,b],i)=>{
+    const p0=anchorPt(a,b.cx,b.cy), p1=anchorPt(b,a.cx,a.cy), g=edgeGeom(p0,p1,u);
+    const ca=colorOf(a.cls), cb=colorOf(b.cls);
+    let col=ca; if(P.grad&&ca!==cb){ col=ctx.createLinearGradient(p0.x,p0.y,p1.x,p1.y); col.addColorStop(0,ca); col.addColorStop(1,cb); }
+    let dash=P.lDash, off=0;
+    if(P.anim==="flow"){ if(dash==="solid"||dash==="double") dash="dash"; off=-time*P.speed*lw*24; }
+    strokeStyled(g.path,col,ca,lw,dash,P.lGlow,u,off);
+    if(P.dots){ ctx.fillStyle=ca; ctx.beginPath(); ctx.arc(p0.x,p0.y,lw*1.6,0,Math.PI*2); ctx.fill(); ctx.fillStyle=cb; ctx.beginPath(); ctx.arc(p1.x,p1.y,lw*1.6,0,Math.PI*2); ctx.fill(); }
+    if(P.anim==="pulse"){
+      const ph=(time*P.speed*0.6+i*0.37)%1, q=g.at(ph);
+      ctx.save(); ctx.fillStyle="#fff"; ctx.shadowColor=ca; ctx.shadowBlur=(8+P.lGlow*20)*u;
+      ctx.beginPath(); ctx.arc(q.x,q.y,lw*2.2,0,Math.PI*2); ctx.fill(); ctx.restore();
+    }
+  });
+}
+
+function render(time){
+  const {w:sw,h:sh}=srcDims(), k=Math.min(1,1920/Math.max(sw,sh));
+  const W=2*Math.round(sw*k/2), H=2*Math.round(sh*k/2); // pares: lo exige el codificador de video
+  if(canvas.width!==W||canvas.height!==H){ canvas.width=W; canvas.height=H; }
+  // unidad de trazo: legible en la pantalla del teléfono, sin exagerar en la foto guardada
+  const disp=Math.min((canvas.clientWidth||W)/W,(canvas.clientHeight||H)/H)||1;
+  const u=Math.min(Math.max(Math.max(W,H)/900,0.9/disp),Math.max(W,H)/380), amt=P.amt, list=tracks;
+  const fx=P.fx;
+  // fondo
+  if(fx==="color") drawSource(W,H,`grayscale(1) brightness(${1-amt*0.55})`);
+  else if(fx==="blur") drawSource(W,H,`blur(${(2+amt*14)*u}px) brightness(${1-amt*0.35})`);
+  else drawSource(W,H);
+  if(fx==="focus" && list.length){ ctx.fillStyle=`rgba(5,6,8,${0.25+amt*0.65})`; ctx.fillRect(0,0,W,H); }
+  // las zonas detectadas se vuelven a dibujar limpias (el recorte une los recuadros aunque se superpongan)
+  if((fx==="color"||fx==="blur"||fx==="focus") && list.length)redrawBoxes(list,W,H);
+  if(fx==="pixel") for(const t of list){
+    const b=boxPx(t,W,H), ps=Math.max(4*u,Math.min(b.w,b.h)/(30-amt*26));
+    const tw=Math.max(1,Math.ceil(b.w/ps)), th=Math.max(1,Math.ceil(b.h/ps));
+    if(tiny.width<tw) tiny.width=tw; if(tiny.height<th) tiny.height=th;
+    tctx.drawImage(canvas,b.x,b.y,b.w,b.h,0,0,tw,th);
+    ctx.imageSmoothingEnabled=false; ctx.drawImage(tiny,0,0,tw,th,b.x,b.y,b.w,b.h); ctx.imageSmoothingEnabled=true;
+  }
+  // uniones por debajo de los recuadros
+  drawLinks(list,W,H,u,time);
+  const lw=Math.max(0.75,P.bW*u);
+  for(const t of list){
+    const b=boxPx(t,W,H), col=colorOf(t.cls);
+    if(P.bFill>0){ ctx.fillStyle=colorOf(t.cls,P.bFill); ctx.fill(fillPath(b,P.shape)); }
+    if(P.shape!=="none") strokeStyled(shapePath(b,P.shape),col,col,lw,P.bDash,P.bGlow,u);
+  }
+  if(P.labels) for(const t of list){
+    const b=boxPx(t,W,H), col=colorOf(t.cls), txt=P.lbl==="ghost"?labelOf(t).toUpperCase():labelOf(t);
+    if(P.bGlow>0&&P.lbl==="ghost"){ ctx.save(); ctx.shadowColor=col; ctx.shadowBlur=P.bGlow*14*u; tag(txt,b.x,b.y-3*u,col,u,P.lbl); ctx.restore(); }
+    else tag(txt,b.x,b.y-(P.lbl==="ghost"?3*u:0),col,u,P.lbl);
+  }
+  if(P.count && list.length) drawCount(u);
+}
+function countMap(){ const m=new Map(); for(const t of tracks) m.set(t.cls,(m.get(t.cls)||0)+1); return [...m].sort((a,b)=>b[1]-a[1]); }
+function drawCount(u){
+  const rows=countMap().slice(0,6), fs=Math.max(10,12*u), lh=fs*1.6, pad=fs*0.8;
+  ctx.font=`500 ${fs}px "Martian Mono",ui-monospace,monospace`;
+  const lines=rows.map(([c,n])=>String(n).padStart(2," ")+"  "+NAMES[c]);
+  const w=Math.max(...lines.map(l=>ctx.measureText(l).width))+pad*2+fs, h=lines.length*lh+pad*1.4;
+  const x=pad, y=ctx.canvas.height-h-pad;
+  ctx.fillStyle="rgba(7,8,10,.62)"; ctx.fillRect(x,y,w,h);
+  ctx.textBaseline="middle";
+  lines.forEach((l,i)=>{ const cy=y+pad*0.7+lh*(i+.5); ctx.fillStyle=colorOf(rows[i][0]); ctx.fillRect(x+pad,cy-fs*0.3,fs*0.6,fs*0.6); ctx.fillStyle="#ece8dd"; ctx.fillText(l,x+pad+fs,cy); });
+}
+
+/* ---------- bucle ---------- */
+let fpsN=0, fpsT=performance.now(), fpsV=0, infMs=0, lastVidT=-1, snapPending=false;
+function frame(now){
+  requestAnimationFrame(frame);
+  if(!ready()||exporting) return;
+  const live = kind==="cam" || (kind==="vid" && !video.paused);
+  if(session && !busy && (live || needDetect)){
+    const still = kind==="img" || (kind==="vid" && video.paused);
+    const {w,h}=srcDims(), t0=performance.now(); busy=true; needDetect=false;
+    runModel({src:srcEl(),w,h}).then(raw=>{ updateTracks(postprocess(raw),still); infMs=infMs?infMs*0.8+(performance.now()-t0)*0.2:performance.now()-t0; })
+      .catch(e=>{ console.error(e); toast("Error de inferencia: "+(e.message||e)); })
+      .finally(()=>{ busy=false; });
+  }
+  render(now/1000);
+  if(snapPending){ snapPending=false; canvas.toBlob(b=>b&&saveFile(b,"turing-yolo-"+stamp()+".jpg"),"image/jpeg",0.92); }
+  fpsN++; if(now-fpsT>500){ fpsV=fpsN*1000/(now-fpsT); fpsN=0; fpsT=now; updateStats(); }
+}
+requestAnimationFrame(frame);
+function updateStats(){
+  $("fps").innerHTML = session ? Math.round(fpsV)+" fps<br>"+(infMs?Math.round(infMs)+" ms · ":"")+(backend==="webgpu"?"GPU":"CPU") : "—";
+  const el=$("counts"); const rows=countMap();
+  el.innerHTML = rows.length ? rows.map(([c,n])=>`<span><b>${n}</b>${NAMES[c]}</span>`).join("") : '<span>Sin detecciones</span>';
+}
+
+/* ---------- guardar ---------- */
+function stamp(){ const d=new Date(),z=n=>String(n).padStart(2,"0"); return d.getFullYear()+z(d.getMonth()+1)+z(d.getDate())+"-"+z(d.getHours())+z(d.getMinutes())+z(d.getSeconds()); }
+function saveFile(blob,name){
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },4000); toast("Descargando "+name);
+}
+$("snap").addEventListener("click",()=>{ if(ready()) snapPending=true; });
+let rec=null, chunks=[], recStart=0, recTimer=null;
+function pickMime(){ const c=["video/mp4;codecs=avc1","video/mp4","video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"]; return c.find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m))||""; }
+$("rec").addEventListener("click",()=>{
+  if(rec){ rec.stop(); return; }
+  if(!ready()) return;
+  if(!window.MediaRecorder||!canvas.captureStream){ toast("Este navegador no puede grabar el lienzo."); return; }
+  const mime=pickMime(); chunks=[];
+  try{ rec=new MediaRecorder(canvas.captureStream(30),mime?{mimeType:mime,videoBitsPerSecond:8e6}:undefined); }
+  catch(e){ toast("No se pudo iniciar la grabación."); rec=null; return; }
+  rec.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); };
+  rec.onstop=()=>{ const type=rec.mimeType||mime||"video/webm"; const ext=type.includes("mp4")?"mp4":"webm";
+    const b=new Blob(chunks,{type}); rec=null; clearInterval(recTimer); $("rec").classList.remove("on"); $("recT").textContent="REC";
+    if(b.size) saveFile(b,"turing-yolo-"+stamp()+"."+ext); };
+  rec.start(500); recStart=performance.now(); $("rec").classList.add("on");
+  recTimer=setInterval(()=>{ const s=Math.floor((performance.now()-recStart)/1000); $("recT").textContent=Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); },250);
+  wake();
+});
+let wl=null; async function wake(){ try{ if(!wl&&navigator.wakeLock){ wl=await navigator.wakeLock.request("screen"); wl.addEventListener("release",()=>wl=null); } }catch(e){} }
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"&&kind==="cam") wake(); });
+
+// la imagen ocupa el espacio libre sobre la hoja de controles
+const sheet=$("sheet"), setSheetH=()=>document.documentElement.style.setProperty("--sheet-h",sheet.offsetHeight+"px");
+if(window.ResizeObserver) new ResizeObserver(setSheetH).observe(sheet); setSheetH();
+/* ---------- renderizado cuadro por cuadro ---------- */
+let expCancel=false;
+$("expCancel").addEventListener("click",()=>{ expCancel=true; $("expTitle").textContent="Cancelando…"; });
+$("expBtn").addEventListener("click",async()=>{
+  if(kind!=="vid"||exporting) return;
+  if(!session){ toast("Esperá a que termine de cargar el modelo."); return; }
+  if(rec) rec.stop();
+  exporting=true; expCancel=false; document.body.classList.add("exporting"); $("exp").hidden=false;
+  $("expTitle").textContent="Renderizando video…"; $("expPct").textContent="0%"; $("expBar").style.width="0%"; $("expInfo").textContent="Preparando…";
+  $("snap").disabled=$("rec").disabled=true; wake();
+  const wasPaused=video.paused; video.pause();
+  tracks=[]; nextId=1; render(0);
+  try{
+    const res=await FrameExport.run({video,file:curFile,fps:P.expFps,canvas,
+      process:async(t)=>{ const {w,h}=srcDims(); updateTracks(postprocess(await runModel({src:video,w,h})),false); render(t); },
+      onStatus:txt=>{ $("expInfo").textContent=txt; },
+      onProgress:(i,n,eta)=>{ const pc=Math.floor(i/n*100); $("expPct").textContent=pc+"%"; $("expBar").style.width=(i/n*100)+"%";
+        $("expInfo").textContent="Cuadro "+i+" de "+n+" · faltan ~"+FrameExport.fmtTime(eta); },
+      cancelled:()=>expCancel});
+    if(res){ saveFile(res.blob,"turing-yolo-render-"+stamp()+".mp4"); if(!res.audio&&curFile) setTimeout(()=>toast("Video guardado sin audio (no se pudo leer o codificar el audio original)."),3400); }
+    else toast("Renderizado cancelado.");
+  }catch(e){ console.error(e); toast("No se pudo renderizar: "+(e.message||e),6000); }
+  exporting=false; document.body.classList.remove("exporting"); $("exp").hidden=true; $("snap").disabled=$("rec").disabled=false;
+  tracks=[]; needDetect=true; if(!wasPaused) video.play().catch(()=>{}); syncUI();
+});
+
+$("hide").addEventListener("click",()=>{ document.body.classList.add("clean"); $("show").hidden=false; });
+$("show").addEventListener("click",()=>{ document.body.classList.remove("clean"); $("show").hidden=true; });
+
+/* ---------- interfaz ---------- */
+let activeTab="src";
+document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{ activeTab=b.dataset.tab; syncUI(); }));
+function chipRow(el,items,get,set){
+  el.innerHTML=""; for(const [v,label] of items){ const b=document.createElement("button"); b.className="chip"; b.textContent=label; b.dataset.v=v;
+    b.addEventListener("click",()=>{ set(v); changed(); }); el.appendChild(b); }
+  bound.push(()=>el.querySelectorAll(".chip").forEach(b=>b.setAttribute("aria-pressed",String(String(get())===b.dataset.v))));
+}
+function slider(id,key,fmt){
+  const el=$(id); el.value=P[key];
+  const paint=()=>{ el.style.setProperty("--p",((el.value-el.min)/(el.max-el.min)*100)+"%"); $(id+"V").textContent=fmt(+el.value); };
+  el.addEventListener("input",()=>{ P[key]=+el.value; paint(); changed(); });
+  bound.push(()=>{ el.value=P[key]; paint(); });
+}
+function sw(id,key){ const el=$(id); el.addEventListener("click",()=>{ P[key]=!P[key]; changed(); }); bound.push(()=>el.setAttribute("aria-checked",String(!!P[key]))); }
+const bound=[];
+function changed(){ persist(); needDetect=true; syncUI(); }
+chipRow($("fxChips"),FX,()=>P.fx,v=>P.fx=v);
+chipRow($("lblChips"),LBLS,()=>P.lbl,v=>P.lbl=v);
+chipRow($("shapeChips"),SHAPES,()=>P.shape,v=>P.shape=v);
+chipRow($("bDashChips"),DASHES,()=>P.bDash,v=>P.bDash=v);
+chipRow($("lnChips"),LINES,()=>P.ln,v=>P.ln=v);
+chipRow($("netChips"),NETS,()=>P.net,v=>P.net=v);
+chipRow($("lDashChips"),DASHES,()=>P.lDash,v=>P.lDash=v);
+chipRow($("animChips"),ANIMS,()=>P.anim,v=>P.anim=v);
+chipRow($("anchorChips"),ANCHORS,()=>P.anchor,v=>P.anchor=v);
+PRESETS.forEach(([name,cfg])=>{ const b=document.createElement("button"); b.className="chip"; b.textContent=name;
+  b.addEventListener("click",()=>{ Object.assign(P,cfg); changed(); toast("Estilo: "+name,1400); }); $("presetChips").appendChild(b); });
+chipRow($("palChips"),PALS,()=>P.pal,v=>P.pal=v);
+chipRow($("sizeChips"),SIZES,()=>P.size,v=>P.size=+v);
+chipRow($("expFpsChips"),[[24,"24 fps"],[30,"30 fps"],[60,"60 fps"]],()=>P.expFps,v=>P.expFps=+v);
+slider("fxAmt","amt",v=>Math.round(v*100)+"%");
+slider("conf","conf",v=>Math.round(v*100)+"%");
+slider("iou","iou",v=>Math.round(v*100)+"%");
+slider("smooth","smooth",v=>Math.round(v*100)+"%");
+const px=v=>v.toFixed(1)+" px", pct=v=>Math.round(v*100)+"%";
+slider("bW","bW",px); slider("bGlow","bGlow",pct); slider("bFill","bFill",pct);
+slider("k","k",v=>String(v)); slider("maxD","maxD",v=>v>=0.995?"sin límite":pct(v)); slider("curv","curv",pct);
+slider("lW","lW",px); slider("lGlow","lGlow",pct); slider("speed","speed",v=>v.toFixed(2)+"×");
+sw("swSame","same"); sw("swDots","dots"); sw("swGrad","grad");
+sw("swLabels","labels"); sw("swConf","confPct"); sw("swCount","count"); sw("swIds","ids");
+// clases
+const grp=$("grpChips"), clsEl=$("clsChips");
+const mkChip=(label,cls)=>{ const b=document.createElement("button"); b.className="chip"+(cls?" "+cls:""); b.textContent=label; return b; };
+const allB=mkChip("Todas"), noneB=mkChip("Ninguna");
+allB.addEventListener("click",()=>{ P.cls.fill(1); changed(); }); noneB.addEventListener("click",()=>{ P.cls.fill(0); changed(); });
+grp.append(allB,noneB);
+for(const [name,ids] of GROUPS){ const b=mkChip(name); b.addEventListener("click",()=>{ const on=!ids.every(i=>P.cls[i]); ids.forEach(i=>P.cls[i]=on?1:0); changed(); }); grp.appendChild(b);
+  bound.push(()=>b.setAttribute("aria-pressed",String(ids.every(i=>P.cls[i])))); }
+NAMES.forEach((n,i)=>{ const b=mkChip(n,"sm"); b.addEventListener("click",()=>{ P.cls[i]=P.cls[i]?0:1; changed(); }); clsEl.appendChild(b);
+  bound.push(()=>b.setAttribute("aria-pressed",String(!!P.cls[i]))); });
+bound.push(()=>{ const n=P.cls.reduce((a,b)=>a+b,0); allB.setAttribute("aria-pressed",String(n===NC)); noneB.setAttribute("aria-pressed",String(n===0)); });
+
+function syncUI(){
+  bound.forEach(f=>f());
+  document.querySelectorAll(".tab").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===activeTab)));
+  ["src","fx","box","ln","det","cls"].forEach(t=>$("panel-"+t).hidden = t!==activeTab);
+  document.querySelectorAll("#srcChips .chip").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.src===kind)));
+  $("flip").textContent = "Cámara: "+(P.facing==="user"?"frontal":"trasera");
+  $("expRow").hidden = kind!=="vid";
+  $("play").hidden = kind!=="vid"; $("play").textContent = video.paused ? "Reproducir" : "Pausa";
+}
+syncUI();
+initModel();
+})();
+</script>
+</body>
+</html>
