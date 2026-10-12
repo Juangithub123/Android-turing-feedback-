@@ -19,7 +19,13 @@ En video: recortá el inicio y el fin, elegí 24, 30 o 60 fps y usá **Vista pre
 - **Clones** (video): recorta personas u objetos con YOLO11n-seg (el modelo de `../vision/`) y los repite con desfase de tiempo; copias, desfase, opacidad, color por copia (tintas riso, ámbar, arcoíris), corrimiento, mezcla y desvanecido.
 - **Archivo:** fecha y hora, coordenadas GPS (leídas del EXIF de las fotos y de los metadatos de los videos), código de tiempo, marcas de esquina y texto propio.
 
-- **Manchas:** seguimiento de manchas por movimiento (lo que cambia entre cuadros), luces o sombras, con IDs estables, recuadro, esquinas o mira, uniones (cadena, vecinos, todas), etiquetas con coordenadas e inversión adentro. Funciona en la vista previa en vivo.
+- **Manchas:** detecta y sigue manchas. Funciona en la vista previa en vivo.
+  - **Qué detectar:** movimiento (con memoria que deja estela), luces, sombras, rango de luz (desde/hasta), color (tono, tolerancia y saturación mínima; **Tomar color de la imagen** lo elige tocando), saturación o bordes. Se puede invertir la selección.
+  - **Limpieza y seguimiento:** detalle de la detección, desenfoque previo, limpiar ruido, unir pedazos, tamaño mínimo y máximo, cantidad, salto máximo entre cuadros, persistencia (cuántos cuadros sobrevive una mancha perdida) y suavizado.
+  - **Forma y color:** esquinas, recuadro, círculo, contorno real de la mancha, mira o sin forma; ver la máscara como celdas o suave; un color o uno por mancha.
+  - **Relleno** (con forma de caja o de la mancha): invertir, pixelar, teñir, desenfocar, glitch, lupa o foco (oscurece lo de afuera).
+  - **Uniones y estelas:** cadena, vecinos, red, plexus (se desvanece con la distancia) o al centro; estela del recorrido de cada mancha.
+  - **Etiquetas:** número, número y posición, o todo (área y velocidad), con prefijo propio y tamaño; panel de datos con la lista de manchas.
 
 ## Movimiento (pestaña de video)
 
@@ -33,7 +39,7 @@ El análisis se hace solo al exportar; con **Analizar movimiento** se puede ver 
 
 ## Looks incluidos
 
-Natural+, Tibio, Tibio corrido, Archivo, Archivo riso, Vigilancia, Cronos, Cronos riso y Riso ámbar. Los looks propios se guardan en el teléfono con **Guardar look actual**.
+Natural+, Tibio, Tibio corrido, Archivo, Archivo riso, Vigilancia, Red de luces, Mosaico, Rastreo color, Cronos, Cronos riso y Riso ámbar. Los looks propios se guardan en el teléfono con **Guardar look actual**.
 
 ## Notas
 

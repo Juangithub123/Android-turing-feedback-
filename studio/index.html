@@ -107,6 +107,12 @@ input[type=text]{appearance:none;width:100%;background:rgba(232,226,210,.06);bor
 .layer[data-open=true] .layer-x{transform:rotate(180deg)}
 .layer-b{padding:2px 12px 14px;display:flex;flex-direction:column;gap:10px}
 .layer[data-open=false] .layer-b{display:none}
+.lab.sec{color:var(--accent);margin-top:6px;padding-top:10px;border-top:1px dashed var(--line)}
+.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px;border:1px solid var(--line)}
+input[type=range].hue::-webkit-slider-runnable-track{height:6px;background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}
+input[type=range].hue::-webkit-slider-thumb{margin-top:-8px}
+input[type=range].hue::-moz-range-track{height:6px;background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}
+[data-when][hidden]{display:none!important}
 
 /* resultado y progreso */
 .modal{position:fixed;inset:0;z-index:20;background:rgba(5,6,8,.86);display:flex;flex-direction:column;justify-content:flex-end}
@@ -240,23 +246,66 @@ input[type=text]{appearance:none;width:100%;background:rgba(232,226,210,.06);bor
     </div>
 
     <div class="layer" id="L-blobs" data-open="false">
-      <div class="layer-h"><button class="sw" role="switch" data-on="blobs"><span>Manchas<small>seguimiento de manchas por movimiento, luces o sombras</small></span><i></i></button><button class="layer-x" aria-label="Abrir ajustes">▾</button></div>
+      <div class="layer-h"><button class="sw" role="switch" data-on="blobs"><span>Manchas<small>detecta y sigue manchas por movimiento, luz, color o bordes</small></span><i></i></button><button class="layer-x" aria-label="Abrir ajustes">▾</button></div>
       <div class="layer-b">
-        <div class="row"><div class="lab">Detectar</div><div class="chips" data-chips="blobs.src"></div></div>
-        <div class="grid2">
-          <div class="row"><div class="lab">Umbral <b data-v="blobs.thr"></b></div><input type="range" data-k="blobs.thr" min="0.02" max="0.5" step="0.01"></div>
-          <div class="row"><div class="lab">Tamaño mín. <b data-v="blobs.min"></b></div><input type="range" data-k="blobs.min" min="0.0005" max="0.03" step="0.0005"></div>
-          <div class="row"><div class="lab">Máximo <b data-v="blobs.max"></b></div><input type="range" data-k="blobs.max" min="1" max="30" step="1"></div>
-          <div class="row"><div class="lab">Grosor <b data-v="blobs.lw"></b></div><input type="range" data-k="blobs.lw" min="0.5" max="3" step="0.1"></div>
+        <div class="row"><div class="lab">Qué detectar</div><div class="chips" data-chips="blobs.src"></div></div>
+        <div class="row" data-when="blobs.src!range"><div class="lab">Umbral <b data-v="blobs.thr"></b></div><input type="range" data-k="blobs.thr" min="0.02" max="0.98" step="0.01"></div>
+        <div class="grid2" data-when="blobs.src=range">
+          <div class="row"><div class="lab">Desde <b data-v="blobs.lo"></b></div><input type="range" data-k="blobs.lo" min="0" max="1" step="0.01"></div>
+          <div class="row"><div class="lab">Hasta <b data-v="blobs.hi"></b></div><input type="range" data-k="blobs.hi" min="0" max="1" step="0.01"></div>
         </div>
-        <div class="row"><div class="lab">Forma</div><div class="chips" data-chips="blobs.style"></div></div>
-        <div class="row"><div class="lab">Uniones</div><div class="chips" data-chips="blobs.links"></div></div>
-        <div class="row"><div class="lab">Color</div><div class="chips" data-chips="blobs.col"></div></div>
-        <div class="grid2">
-          <button class="sw" role="switch" data-sw="blobs.labels">Etiquetas<i></i></button>
-          <button class="sw" role="switch" data-sw="blobs.invert">Invertir adentro<i></i></button>
+        <div class="row" data-when="blobs.src=color"><div class="lab">Tono <span><span class="swatch" id="hueSw"></span><b data-v="blobs.hue"></b></span></div><input type="range" class="hue" data-k="blobs.hue" min="0" max="360" step="1"></div>
+        <div class="grid2" data-when="blobs.src=color">
+          <div class="row"><div class="lab">Tolerancia <b data-v="blobs.htol"></b></div><input type="range" data-k="blobs.htol" min="5" max="90" step="1"></div>
+          <div class="row"><div class="lab">Saturación mín. <b data-v="blobs.smin"></b></div><input type="range" data-k="blobs.smin" min="0" max="1" step="0.01"></div>
         </div>
-        <p class="note">En <em>Movimiento</em> detecta lo que cambia entre cuadros (en una foto no hay movimiento: usá Luces o Sombras).</p>
+        <div class="acts" data-when="blobs.src=color"><button class="act" id="pickColor">Tomar color de la imagen</button></div>
+        <div class="row" data-when="blobs.src=motion"><div class="lab">Memoria del movimiento <b data-v="blobs.memory"></b></div><input type="range" data-k="blobs.memory" min="0" max="0.95" step="0.01"></div>
+        <button class="sw" role="switch" data-sw="blobs.inv">Invertir selección<i></i></button>
+
+        <div class="lab sec">Limpieza y seguimiento</div>
+        <div class="grid2">
+          <div class="row"><div class="lab">Detalle <b data-v="blobs.res"></b></div><input type="range" data-k="blobs.res" min="60" max="320" step="20"></div>
+          <div class="row"><div class="lab">Desenfoque <b data-v="blobs.blur"></b></div><input type="range" data-k="blobs.blur" min="0" max="4" step="0.5"></div>
+          <div class="row"><div class="lab">Limpiar ruido <b data-v="blobs.clean"></b></div><input type="range" data-k="blobs.clean" min="0" max="3" step="1"></div>
+          <div class="row"><div class="lab">Unir <b data-v="blobs.grow"></b></div><input type="range" data-k="blobs.grow" min="0" max="5" step="1"></div>
+          <div class="row"><div class="lab">Tamaño mín. <b data-v="blobs.min"></b></div><input type="range" data-k="blobs.min" min="0.0005" max="0.05" step="0.0005"></div>
+          <div class="row"><div class="lab">Tamaño máx. <b data-v="blobs.maxa"></b></div><input type="range" data-k="blobs.maxa" min="0.02" max="1" step="0.01"></div>
+          <div class="row"><div class="lab">Cantidad <b data-v="blobs.max"></b></div><input type="range" data-k="blobs.max" min="1" max="40" step="1"></div>
+          <div class="row"><div class="lab">Salto máx. <b data-v="blobs.jump"></b></div><input type="range" data-k="blobs.jump" min="0.02" max="0.4" step="0.01"></div>
+          <div class="row"><div class="lab">Persistencia <b data-v="blobs.persist"></b></div><input type="range" data-k="blobs.persist" min="0" max="20" step="1"></div>
+          <div class="row"><div class="lab">Suavizado <b data-v="blobs.smooth"></b></div><input type="range" data-k="blobs.smooth" min="0" max="0.9" step="0.01"></div>
+        </div>
+
+        <div class="lab sec">Forma y color</div>
+        <div class="chips" data-chips="blobs.style"></div>
+        <div class="row"><div class="lab">Ver máscara</div><div class="chips" data-chips="blobs.view"></div></div>
+        <div class="row"><div class="lab">Color</div><div class="chips" data-chips="blobs.colMode"></div></div>
+        <div class="chips" data-chips="blobs.col"></div>
+        <div class="row"><div class="lab">Grosor <b data-v="blobs.lw"></b></div><input type="range" data-k="blobs.lw" min="0.5" max="4" step="0.1"></div>
+
+        <div class="lab sec">Relleno</div>
+        <div class="chips" data-chips="blobs.fill"></div>
+        <div class="grid2" data-when="blobs.fill!none">
+          <div class="row"><div class="lab">Forma</div><div class="chips" data-chips="blobs.fshape"></div></div>
+          <div class="row"><div class="lab">Intensidad <b data-v="blobs.famt"></b></div><input type="range" data-k="blobs.famt" min="0" max="1" step="0.01"></div>
+        </div>
+
+        <div class="lab sec">Uniones y estelas</div>
+        <div class="chips" data-chips="blobs.links"></div>
+        <div class="grid2">
+          <div class="row" data-when="blobs.links~all plexus"><div class="lab">Distancia <b data-v="blobs.linkDist"></b></div><input type="range" data-k="blobs.linkDist" min="0.05" max="1" step="0.01"></div>
+          <div class="row"><div class="lab">Estela <b data-v="blobs.trail"></b></div><input type="range" data-k="blobs.trail" min="0" max="60" step="1"></div>
+        </div>
+
+        <div class="lab sec">Etiquetas</div>
+        <div class="chips" data-chips="blobs.labels"></div>
+        <div class="grid2">
+          <div class="row"><div class="lab">Prefijo</div><input type="text" data-text="blobs.ltext" maxlength="16" placeholder="OBJ"></div>
+          <div class="row"><div class="lab">Tamaño <b data-v="blobs.lsize"></b></div><input type="range" data-k="blobs.lsize" min="0.6" max="2.5" step="0.05"></div>
+        </div>
+        <button class="sw" role="switch" data-sw="blobs.panel">Panel de datos<i></i></button>
+        <p class="note">Movimiento detecta lo que cambia entre cuadros (en fotos usá Luces, Sombras, Rango, Color, Saturación o Bordes). <em>Limpiar ruido</em> borra puntitos sueltos; <em>Unir</em> junta pedazos cercanos; <em>Persistencia</em> mantiene una mancha unos cuadros si se pierde.</p>
       </div>
     </div>
 
@@ -378,7 +427,9 @@ const DEFAULT={
   riso:{on:false,mode:"rgb",off:4,ang:30,ink1:"blue",ink2:"orange",paper:"cream",half:false,hsize:7},
   clones:{on:false,target:"person",n:5,delay:8,opac:0.75,tint:0,dx:0,dy:0,pal:"inks",blend:"normal",fade:true,behind:true},
   hud:{on:false,date:true,gps:true,tc:true,corners:true,txt:"",pos:"bl",col:"amber",size:1},
-  blobs:{on:false,src:"motion",thr:0.12,min:0.002,max:10,style:"corners",links:"chain",col:"amber",lw:1,labels:true,invert:false}
+  blobs:{on:false,src:"motion",thr:0.4,lo:0.35,hi:0.65,hue:30,htol:25,smin:0.3,inv:false,memory:0.5,res:160,blur:1,clean:1,grow:1,min:0.002,maxa:0.5,max:10,
+    jump:0.12,persist:3,smooth:0.3,style:"corners",view:"none",colMode:"single",col:"amber",lw:1,fill:"none",fshape:"box",famt:0.5,
+    links:"chain",linkDist:0.35,trail:0,labels:"coords",ltext:"",lsize:1,panel:false}
 };
 const mk=over=>{ const l=deep(DEFAULT); for(const k in over) Object.assign(l[k],over[k]); return l; };
 const PRESETS=[
@@ -387,7 +438,10 @@ const PRESETS=[
   ["Tibio corrido", mk({grade:{temp:0.28,con:0,sat:-0.1,fade:0.2,split:0.25},film:{on:true,grain:0.3,gsize:1.6,hal:0.35,bloom:0.15,vig:0.2},riso:{on:true,mode:"rgb",off:5,ang:20}})],
   ["Archivo",  mk({grade:{con:0.15,sat:-0.3,temp:-0.12,fade:0.22,split:0.35,shCol:"teal",hiCol:"amber"},film:{on:true,grain:0.25,gsize:1.3,hal:0.1,bloom:0.05,vig:0.18,sharp:0.2},riso:{on:true,mode:"rgb",off:2.5,ang:0},hud:{on:true,date:true,gps:true,tc:true,corners:true,pos:"bl",col:"amber"}})],
   ["Archivo riso", mk({grade:{con:0.2,exp:0.05},film:{on:true,grain:0.28,gsize:1.8,hal:0,bloom:0,vig:0,sharp:0},riso:{on:true,mode:"duo",off:6,ang:35,ink1:"blue",ink2:"orange",paper:"cream"},hud:{on:true,col:"black",corners:true,pos:"bl"}})],
-  ["Vigilancia", mk({grade:{con:0.12,sat:-0.65,temp:-0.2,fade:0.15,split:0.25,shCol:"teal",hiCol:"amber"},film:{on:true,grain:0.3,gsize:1.4,vig:0.25,sharp:0.2},riso:{on:true,mode:"rgb",off:2,ang:0},blobs:{on:true,src:"motion",thr:0.1,style:"corners",links:"chain",labels:true,col:"amber"},hud:{on:true,date:true,gps:true,tc:true,corners:true,pos:"bl",col:"amber"}})],
+  ["Vigilancia", mk({grade:{con:0.12,sat:-0.65,temp:-0.2,fade:0.15,split:0.25,shCol:"teal",hiCol:"amber"},film:{on:true,grain:0.3,gsize:1.4,vig:0.25,sharp:0.2},riso:{on:true,mode:"rgb",off:2,ang:0},blobs:{on:true,src:"motion",thr:0.35,memory:0.6,style:"corners",links:"chain",labels:"coords",panel:true,col:"amber"},hud:{on:true,date:true,gps:true,tc:true,corners:true,pos:"bl",col:"amber"}})],
+  ["Red de luces", mk({grade:{con:0.2,sat:-0.35,fade:0.1},film:{on:true,grain:0.25,gsize:1.5,hal:0.4,bloom:0.25,vig:0.2},blobs:{on:true,src:"bright",thr:0.82,blur:1.5,clean:0,grow:1,max:24,style:"circle",links:"plexus",linkDist:0.45,fill:"spot",fshape:"box",famt:0.35,labels:"id",col:"cream",colMode:"single"}})],
+  ["Mosaico", mk({grade:{con:0.15,sat:-0.2},film:{on:true,grain:0.2,gsize:1.3},riso:{on:true,mode:"rgb",off:3,ang:0},blobs:{on:true,src:"motion",thr:0.3,memory:0.75,res:120,clean:1,grow:2,style:"contour",view:"cells",colMode:"ids",fill:"pixel",fshape:"mask",famt:0.4,links:"none",labels:"none"}})],
+  ["Rastreo color", mk({grade:{con:0.1,sat:-0.7,fade:0.15},film:{on:true,grain:0.3,gsize:1.5,vig:0.2},blobs:{on:true,src:"color",hue:20,htol:30,smin:0.35,clean:1,grow:1,max:8,style:"contour",fill:"tint",fshape:"mask",famt:0.6,colMode:"ids",links:"near",trail:25,labels:"full"}})],
   ["Cronos",   mk({grade:{bw:true,con:0.35,fade:0.1,sh:-0.1},film:{on:true,grain:0.5,gsize:1.9,hal:0,bloom:0.12,vig:0.4,sharp:0.15},clones:{on:true,n:5,delay:9,opac:0.75,tint:0,fade:true},hud:{on:true,date:false,gps:false,tc:true,corners:false,pos:"br",col:"cream"}})],
   ["Cronos riso", mk({grade:{con:0.15,sat:-0.2,fade:0.15},film:{on:true,grain:0.35,gsize:1.7,vig:0.2},riso:{on:true,mode:"rgb",off:4,ang:200},clones:{on:true,n:5,delay:8,opac:0.85,tint:0.75,pal:"inks",blend:"multiply",fade:true}})],
   ["Riso ámbar", mk({grade:{con:0.25},film:{on:true,grain:0.2,gsize:1.4,hal:0,bloom:0,vig:0},riso:{on:true,mode:"duo",off:5,ang:60,ink1:"black",ink2:"amber",paper:"cream",half:true,hsize:6}})]
@@ -397,7 +451,11 @@ let L=deep(PRESETS[1][1]), lookName=PRESETS[1][0], G={fmt:"4:5",size:1080,fps:30
 let userLooks=[];
 try{ userLooks=JSON.parse(localStorage.getItem(LOOK_KEY)||"[]"); }catch(e){}
 try{ const s=JSON.parse(localStorage.getItem(STATE_KEY)||"null"); if(s){ L=mergeLook(s.L); lookName=s.lookName||""; Object.assign(G,s.G); } }catch(e){}
-function mergeLook(l){ const o=deep(DEFAULT); for(const k in o) if(l&&l[k]) Object.assign(o[k],l[k]); return o; }
+function mergeLook(l){ const o=deep(DEFAULT); for(const k in o) if(l&&l[k]) Object.assign(o[k],l[k]);
+  const b=o.blobs; // looks guardados con la versión anterior de Manchas
+  if(typeof b.labels==="boolean") b.labels=b.labels?"coords":"none"; if(b.invert===true&&b.fill==="none") b.fill="invert"; delete b.invert;
+  if(l&&l.blobs&&l.blobs.thr!=null&&l.blobs.res==null&&l.blobs.thr<0.3) b.thr=Math.min(0.9,l.blobs.thr*3.3);
+  return o; }
 let saveT; function persist(){ clearTimeout(saveT); saveT=setTimeout(()=>{ try{ localStorage.setItem(STATE_KEY,JSON.stringify({L,lookName,G})); }catch(e){} },300); }
 
 /* ---------- metadatos: fecha y GPS (EXIF en JPEG, ©xyz/mvhd en MP4) ---------- */
@@ -622,7 +680,7 @@ function renderFrame(it,src,W,H,look,o={}){
   if(!o.prepared) drawView(cctx,src,W,H,v);
   if(o.clones) o.clones(cctx,W,H);
   const bl=look.blobs, useBlobs=bl&&bl.on&&!o.bypass&&!o.thumb;
-  if(useBlobs&&o.blobKey!==blobKey){ detectBlobs(bl); blobKey=o.blobKey; }
+  if(useBlobs&&o.blobKey!==blobKey){ detectBlobs(bl,o.blobFrame); blobKey=o.blobKey; }
   if(glc.width!==W||glc.height!==H){ glc.width=W; glc.height=H; }
   gl.viewport(0,0,W,H); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,tex);
   gl.pixelStorei(gl.UNPACK_ALIGNMENT,4); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,comp); gl.generateMipmap(gl.TEXTURE_2D);
@@ -637,7 +695,7 @@ function renderFrame(it,src,W,H,look,o={}){
   gl.drawArrays(gl.TRIANGLES,0,3);
   if(out.width!==W||out.height!==H){ out.width=W; out.height=H; }
   octx.drawImage(glc,0,0);
-  if(!o.bypass&&!o.thumb){ if(useBlobs) drawBlobs(octx,W,H,bl); if(it.kind==="vid") drawMarker(octx,W,H,it,v,o.srcT||0); }
+  if(!o.bypass&&!o.thumb){ if(useBlobs) drawBlobs(octx,W,H,bl,o.seed||0); if(it.kind==="vid") drawMarker(octx,W,H,it,v,o.srcT||0); }
   if(look.hud.on&&!o.bypass) drawHud(octx,W,H,it,look.hud,o.t||0,o.frame||0);
   return out;
 }
@@ -685,7 +743,7 @@ function loop(){
   const [W,H]=previewSize(it), src=it.kind==="img"?it.bitmap:video;
   const tNow=it.kind==="vid"?video.currentTime:0;
   renderFrame(it,src,W,H,L,{bypass:showOrig,seed:frameSeed++,t:it.kind==="vid"?tNow-it.trim[0]:0,srcT:tNow,view:viewAt(it,tNow),
-    blobKey:cur+"|"+tNow.toFixed(3)+"|"+W+"|"+JSON.stringify(L.blobs)});
+    blobFrame:cur+"|"+tNow.toFixed(3)+"|"+W, blobKey:cur+"|"+tNow.toFixed(3)+"|"+W+"|"+JSON.stringify(L.blobs)});
   if(view.width!==W||view.height!==H){ view.width=W; view.height=H; }
   vctx.drawImage(out,0,0);
   if(looksDirty){ looksDirty=false; setTimeout(renderLookThumbs,30); }
@@ -749,12 +807,15 @@ const setK=(k,v)=>{ const [a,b]=k.split("."); L[a][b]=v; };
 const FMTS={ "grade.exp":v=>(v>0?"+":"")+v.toFixed(2)+" EV", "riso.ang":v=>Math.round(v)+"°", "riso.off":v=>v.toFixed(1)+" px", "riso.hsize":v=>v.toFixed(1)+" px",
   "film.gsize":v=>v.toFixed(2)+"×", "clones.n":v=>String(v), "clones.delay":v=>v+" cuadros", "hud.size":v=>v.toFixed(2)+"×",
   "clones.dx":v=>Math.round(v*100)+"%", "clones.dy":v=>Math.round(v*100)+"%",
-  "blobs.thr":v=>Math.round(v*100)+"%", "blobs.min":v=>(v*100).toFixed(2)+"%", "blobs.max":v=>String(v), "blobs.lw":v=>v.toFixed(1)+"×" };
-const fmtV=(k,v)=>FMTS[k]?FMTS[k](v):(v>0&&k.startsWith("grade.")&&k!=="grade.fade"&&k!=="grade.split"?"+":"")+Math.round(v*100);
+  "blobs.min":v=>(v*100).toFixed(2)+"%", "blobs.max":v=>String(v), "blobs.lw":v=>v.toFixed(1)+"×", "blobs.hue":v=>Math.round(v)+"°", "blobs.htol":v=>"±"+Math.round(v)+"°",
+  "blobs.res":v=>v+" px", "blobs.blur":v=>v?v.toFixed(1):"no", "blobs.clean":v=>v?String(v):"no", "blobs.grow":v=>v?String(v):"no",
+  "blobs.persist":v=>v+" cuadros", "blobs.trail":v=>v?v+" cuadros":"no", "blobs.lsize":v=>v.toFixed(2)+"×" };
+const fmtV=(k,v)=>FMTS[k]?FMTS[k](v):k.startsWith("blobs.")?Math.round(v*100)+"%":(v>0&&k.startsWith("grade.")&&k!=="grade.fade"&&k!=="grade.split"?"+":"")+Math.round(v*100);
 function paintRange(el){ el.style.setProperty("--p",((el.value-el.min)/(el.max-el.min)*100)+"%"); }
 function lookChanged(){ lookName=""; persist(); dirty=true; looksDirty=true; syncUI(); }
 document.querySelectorAll("input[data-k]").forEach(el=>{ const k=el.dataset.k, lab=document.querySelector(`b[data-v="${k}"]`);
-  el.addEventListener("input",()=>{ setK(k,+el.value); paintRange(el); if(lab) lab.textContent=fmtV(k,+el.value); lookName=""; persist(); dirty=true; });
+  el.addEventListener("input",()=>{ setK(k,+el.value); paintRange(el); if(lab) lab.textContent=fmtV(k,+el.value); lookName=""; persist(); dirty=true;
+    if(k==="blobs.hue") $("hueSw").style.background=`hsl(${el.value},85%,55%)`; });
   el.addEventListener("change",()=>{ looksDirty=true; syncUI(); });
   bound.push(()=>{ el.value=getK(k); paintRange(el); if(lab) lab.textContent=fmtV(k,+el.value); }); });
 document.querySelectorAll("[data-sw]").forEach(el=>{ const k=el.dataset.sw; el.addEventListener("click",()=>{ setK(k,!getK(k)); lookChanged(); }); bound.push(()=>el.setAttribute("aria-checked",String(!!getK(k)))); });
@@ -764,8 +825,12 @@ document.querySelectorAll("input[data-text]").forEach(el=>{ const k=el.dataset.t
 const CHIPS={ "grade.shCol":TONES, "grade.hiCol":TONES, "riso.mode":[["rgb","Tintas RGB corridas"],["duo","Duotono riso"]], "riso.ink1":INKS, "riso.ink2":INKS, "riso.paper":PAPERS,
   "clones.target":[["person","Personas"],["largest","El objeto más grande"],["all","Todo lo detectado"]], "clones.pal":[["none","Sin color"],["inks","Tintas riso"],["amber","Ámbar"],["rainbow","Arcoíris"]],
   "clones.blend":[["normal","Normal"],["multiply","Multiplicar"],["screen","Trama"],["difference","Diferencia"]], "hud.pos":[["bl","Abajo izq."],["br","Abajo der."],["tl","Arriba izq."],["tr","Arriba der."]], "hud.col":HUDCOLS,
-  "blobs.src":[["motion","Movimiento"],["bright","Luces"],["dark","Sombras"]], "blobs.style":[["corners","Esquinas"],["rect","Recuadro"],["cross","Mira"]],
-  "blobs.links":[["none","Ninguna"],["chain","Cadena"],["near","Vecinos"],["all","Todas"]], "blobs.col":HUDCOLS };
+  "blobs.src":[["motion","Movimiento"],["bright","Luces"],["dark","Sombras"],["range","Rango de luz"],["color","Color"],["sat","Saturación"],["edges","Bordes"]],
+  "blobs.style":[["corners","Esquinas"],["rect","Recuadro"],["circle","Círculo"],["contour","Contorno"],["cross","Mira"],["none","Sin forma"]],
+  "blobs.view":[["none","No"],["cells","Celdas"],["soft","Suave"]], "blobs.colMode":[["single","Un color"],["ids","Uno por mancha"]],
+  "blobs.fill":[["none","Ninguno"],["invert","Invertir"],["pixel","Pixelar"],["tint","Teñir"],["blur","Desenfocar"],["glitch","Glitch"],["zoom","Lupa"],["spot","Foco"]],
+  "blobs.fshape":[["box","Caja"],["mask","Mancha"]], "blobs.labels":[["none","No"],["id","Número"],["coords","Número y posición"],["full","Todo"]],
+  "blobs.links":[["none","Ninguna"],["chain","Cadena"],["near","Vecinos"],["all","Red"],["plexus","Plexus"],["center","Al centro"]], "blobs.col":HUDCOLS };
 document.querySelectorAll("[data-chips]").forEach(el=>{ const k=el.dataset.chips;
   for(const [v,label] of CHIPS[k]){ const b=document.createElement("button"); b.className="chip"; b.textContent=label; b.dataset.v=v; b.addEventListener("click",()=>{ setK(k,v); lookChanged(); }); el.appendChild(b); }
   bound.push(()=>el.querySelectorAll(".chip").forEach(b=>b.setAttribute("aria-pressed",String(getK(k)===b.dataset.v)))); });
@@ -1070,66 +1135,183 @@ function drawMarker(x,W,H,it,v,srcT){
   x.restore();
 }
 
-// manchas: máscara (movimiento, luces o sombras) → componentes conexas → seguimiento por cercanía
+// manchas: valor por píxel según la fuente → umbral → limpieza (apertura y dilatación) → componentes conexas → seguimiento
 const bc=document.createElement("canvas"), bcx=bc.getContext("2d",{willReadFrequently:true});
-let blobPrev=null, blobList=[], blobNext=1, blobKey=null;
-function resetBlobs(){ blobPrev=null; blobList=[]; blobNext=1; blobKey=null; }
-function detectBlobs(b){
-  const bw=160, bh=Math.max(4,Math.round(bw*comp.height/comp.width)), n=bw*bh;
-  if(bc.width!==bw||bc.height!==bh){ bc.width=bw; bc.height=bh; }
-  bcx.drawImage(comp,0,0,bw,bh); const d=bcx.getImageData(0,0,bw,bh).data, g=new Float32Array(n);
-  for(let i=0,j=0;i<n;i++,j+=4) g[i]=(d[j]*0.299+d[j+1]*0.587+d[j+2]*0.114)/255;
-  const mk=new Uint8Array(n), thr=b.thr;
-  if(b.src==="motion"){ if(blobPrev&&blobPrev.length===n) for(let i=0;i<n;i++) mk[i]=Math.abs(g[i]-blobPrev[i])>thr*0.6?1:0; blobPrev=g; }
-  else if(b.src==="bright"){ for(let i=0;i<n;i++) mk[i]=g[i]>1-thr*1.4?1:0; }
-  else { for(let i=0;i<n;i++) mk[i]=g[i]<thr*1.4?1:0; }
-  const m2=new Uint8Array(n); // dilatación para unir pedazos cercanos
-  for(let y=0;y<bh;y++) for(let x=0;x<bw;x++){ let v=0; for(let yy=Math.max(0,y-1);yy<=Math.min(bh-1,y+1)&&!v;yy++) for(let xx=Math.max(0,x-1);xx<=Math.min(bw-1,x+1);xx++) if(mk[yy*bw+xx]){ v=1; break; } m2[y*bw+x]=v; }
-  const lab=new Int32Array(n), st=new Int32Array(n), found=[];
-  for(let i=0;i<n;i++){ if(!m2[i]||lab[i]) continue;
-    let sp=0, cnt=0, sx=0, sy=0, x0=bw, y0=bh, x1=0, y1=0; st[sp++]=i; lab[i]=1;
-    while(sp){ const q=st[--sp], x=q%bw, y=(q/bw)|0; cnt++; sx+=x; sy+=y; if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
-      if(x>0&&m2[q-1]&&!lab[q-1]){ lab[q-1]=1; st[sp++]=q-1; } if(x<bw-1&&m2[q+1]&&!lab[q+1]){ lab[q+1]=1; st[sp++]=q+1; }
-      if(y>0&&m2[q-bw]&&!lab[q-bw]){ lab[q-bw]=1; st[sp++]=q-bw; } if(y<bh-1&&m2[q+bw]&&!lab[q+bw]){ lab[q+bw]=1; st[sp++]=q+bw; } }
-    if(cnt>=b.min*n) found.push({x:x0/bw,y:y0/bh,w:(x1-x0+1)/bw,h:(y1-y0+1)/bh,cx:sx/cnt/bw,cy:sy/cnt/bh,a:cnt/n}); }
-  found.sort((p,q)=>q.a-p.a); const keep=found.slice(0,b.max), used=new Set();
-  for(const f of keep){ let best=null, bd=0.12; for(const o of blobList){ if(used.has(o.id)) continue; const dd=Math.hypot(o.cx-f.cx,o.cy-f.cy); if(dd<bd){ bd=dd; best=o; } }
-    f.id=best?best.id:blobNext++; if(best) used.add(best.id); }
-  blobList=keep;
+const bm=document.createElement("canvas"), bmx=bm.getContext("2d");           // máscara chica coloreada (celdas, contornos, recortes)
+const bfx=document.createElement("canvas"), bfxx=bfx.getContext("2d");        // efectos de relleno a tamaño completo
+const bmk=document.createElement("canvas"), bmkx=bmk.getContext("2d");        // máscara de relleno a tamaño completo
+let blobPrev=null, blobAcc=null, blobList=[], blobNext=1, blobKey=null, blobMask=null, blobLab=null, blobDims=[1,1], blobTrails=new Map();
+function resetBlobs(){ blobFrame=null; blobBase=null; blobPrev=null; blobAcc=null; blobList=[]; blobNext=1; blobKey=null; blobMask=null; blobLab=null; blobTrails=new Map(); }
+function rgb2hsv(r,g,b){ const mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn; let h=0;
+  if(d>1e-6){ h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4; h*=60; if(h<0) h+=360; } return [h,mx?d/mx:0,mx]; }
+function morph(src,w,h,grow){ // grow=true dilata, false erosiona (vecindad 3×3)
+  const o=new Uint8Array(w*h);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){ let v=grow?0:1;
+    for(let yy=y-1;yy<=y+1;yy++) for(let xx=x-1;xx<=x+1;xx++){ const s=(yy<0||xx<0||yy>=h||xx>=w)?0:src[yy*w+xx]; if(grow&&s){ v=1; yy=y+2; break; } if(!grow&&!s){ v=0; yy=y+2; break; } }
+    o[y*w+x]=v; }
+  return o;
 }
-function drawBlobs(x,W,H,b){
-  if(!blobList.length) return;
-  const u=Math.min(W,H)/1080, col=find(HUDCOLS,b.col)[2], lw=Math.max(1,b.lw*1.6*u), list=blobList.map(f=>({...f,X:f.x*W,Y:f.y*H,Wd:f.w*W,Hd:f.h*H,CX:f.cx*W,CY:f.cy*H}));
-  x.save();
-  if(b.invert){ x.globalCompositeOperation="difference"; x.fillStyle="#fff"; for(const f of list) x.fillRect(f.X,f.Y,f.Wd,f.Hd); x.globalCompositeOperation="source-over"; }
-  x.strokeStyle=col; x.fillStyle=col; x.lineWidth=lw;
-  if(b.links!=="none"&&list.length>1){ x.beginPath();
-    if(b.links==="chain"){ const s=[...list].sort((p,q)=>p.CX-q.CX); s.forEach((f,i)=>{ if(i){ x.moveTo(s[i-1].CX,s[i-1].CY); x.lineTo(f.CX,f.CY); } }); }
-    else if(b.links==="near"){ for(const f of list){ let o=null, bd=1e9; for(const g of list){ if(g===f) continue; const d=Math.hypot(g.CX-f.CX,g.CY-f.CY); if(d<bd){ bd=d; o=g; } } x.moveTo(f.CX,f.CY); x.lineTo(o.CX,o.CY); } }
-    else { for(let i=0;i<list.length;i++) for(let j=i+1;j<list.length;j++){ x.moveTo(list[i].CX,list[i].CY); x.lineTo(list[j].CX,list[j].CY); } }
-    x.globalAlpha=0.7; x.stroke(); x.globalAlpha=1; }
-  x.beginPath();
-  for(const f of list){
-    if(b.style==="rect") x.rect(f.X,f.Y,f.Wd,f.Hd);
-    else if(b.style==="corners"){ const l=Math.min(f.Wd,f.Hd)*0.3;
-      for(const [cx,cy,sx,sy] of [[f.X,f.Y,1,1],[f.X+f.Wd,f.Y,-1,1],[f.X+f.Wd,f.Y+f.Hd,-1,-1],[f.X,f.Y+f.Hd,1,-1]]){ x.moveTo(cx,cy+sy*l); x.lineTo(cx,cy); x.lineTo(cx+sx*l,cy); } }
-    else { const l=14*u; x.moveTo(f.CX-l,f.CY); x.lineTo(f.CX+l,f.CY); x.moveTo(f.CX,f.CY-l); x.lineTo(f.CX,f.CY+l); x.rect(f.CX-l*0.45,f.CY-l*0.45,l*0.9,l*0.9); }
+let blobFrame=null, blobBase=null;
+function detectBlobs(b,frame){
+  if(frame!==blobFrame||!blobBase){ blobFrame=frame; blobBase={g:blobPrev,acc:blobAcc,list:blobList,next:blobNext,trails:new Map([...blobTrails].map(([k,v])=>[k,v.slice()]))}; }
+  else { blobPrev=blobBase.g; blobAcc=blobBase.acc; blobList=blobBase.list; blobNext=blobBase.next; blobTrails=new Map([...blobBase.trails].map(([k,v])=>[k,v.slice()])); }
+  if(blobAcc) blobAcc=Float32Array.from(blobAcc);
+  const bw=b.res, bh=Math.max(4,Math.round(bw*comp.height/comp.width)), n=bw*bh;
+  if(bc.width!==bw||bc.height!==bh){ bc.width=bw; bc.height=bh; }
+  bcx.filter=b.blur>0?`blur(${b.blur*0.6}px)`:"none"; bcx.drawImage(comp,0,0,bw,bh); bcx.filter="none";
+  const d=bcx.getImageData(0,0,bw,bh).data, g=new Float32Array(n), val=new Float32Array(n);
+  for(let i=0,j=0;i<n;i++,j+=4) g[i]=(d[j]*0.299+d[j+1]*0.587+d[j+2]*0.114)/255;
+  if(blobPrev&&blobPrev.length!==n) blobPrev=blobAcc=null;
+  switch(b.src){
+    case "motion": { // diferencia con el cuadro anterior; la memoria deja una estela que se apaga de a poco
+      if(!blobAcc) blobAcc=new Float32Array(n);
+      for(let i=0;i<n;i++){ const df=blobPrev?Math.min(1,Math.abs(g[i]-blobPrev[i])*4):0; blobAcc[i]=Math.max(df,blobAcc[i]*b.memory); val[i]=blobAcc[i]; }
+      blobPrev=g; break; }
+    case "bright": for(let i=0;i<n;i++) val[i]=g[i]; break;
+    case "dark": for(let i=0;i<n;i++) val[i]=1-g[i]; break;
+    case "range": for(let i=0;i<n;i++) val[i]=g[i]>=b.lo&&g[i]<=b.hi?1:0; break;
+    case "sat": for(let i=0,j=0;i<n;i++,j+=4) val[i]=rgb2hsv(d[j]/255,d[j+1]/255,d[j+2]/255)[1]; break;
+    case "color": for(let i=0,j=0;i<n;i++,j+=4){ const [h,s,v]=rgb2hsv(d[j]/255,d[j+1]/255,d[j+2]/255);
+      const dh=Math.abs(((h-b.hue+540)%360)-180); val[i]=s>=b.smin&&v>0.12?Math.max(0,1-dh/b.htol):0; } break;
+    case "edges": for(let y=1;y<bh-1;y++) for(let x=1;x<bw-1;x++){ const i=y*bw+x;
+      const gx=g[i-bw+1]+2*g[i+1]+g[i+bw+1]-g[i-bw-1]-2*g[i-1]-g[i+bw-1], gy=g[i+bw-1]+2*g[i+bw]+g[i+bw+1]-g[i-bw-1]-2*g[i-bw]-g[i-bw+1];
+      val[i]=Math.min(1,Math.hypot(gx,gy)*1.2); } break;
   }
-  x.stroke();
-  if(b.labels){ const fs=Math.round(15*u); x.font=`500 ${fs}px "Martian Mono",ui-monospace,monospace`; x.textBaseline="bottom"; x.textAlign="left";
-    for(const f of list) x.fillText(String(f.id).padStart(3,"0")+"  "+f.cx.toFixed(2)+" "+f.cy.toFixed(2),f.X,f.Y-3*u); }
+  let mk=new Uint8Array(n); const thr=b.src==="range"?0.5:b.thr;
+  for(let i=0;i<n;i++) mk[i]=(val[i]>=thr)!==!!b.inv?1:0;
+  for(let k=0;k<b.clean;k++) mk=morph(mk,bw,bh,false);
+  for(let k=0;k<b.clean+b.grow;k++) mk=morph(mk,bw,bh,true);
+  // componentes conexas
+  const lab=new Int32Array(n), st=new Int32Array(n), found=[]; let cid=0;
+  for(let i=0;i<n;i++){ if(!mk[i]||lab[i]) continue; cid++;
+    let sp=0, cnt=0, sx=0, sy=0, x0=bw, y0=bh, x1=0, y1=0; st[sp++]=i; lab[i]=cid;
+    while(sp){ const q=st[--sp], x=q%bw, y=(q/bw)|0; cnt++; sx+=x; sy+=y; if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
+      if(x>0&&mk[q-1]&&!lab[q-1]){ lab[q-1]=cid; st[sp++]=q-1; } if(x<bw-1&&mk[q+1]&&!lab[q+1]){ lab[q+1]=cid; st[sp++]=q+1; }
+      if(y>0&&mk[q-bw]&&!lab[q-bw]){ lab[q-bw]=cid; st[sp++]=q-bw; } if(y<bh-1&&mk[q+bw]&&!lab[q+bw]){ lab[q+bw]=cid; st[sp++]=q+bw; } }
+    const a=cnt/n; if(a>=b.min&&a<=b.maxa) found.push({cid,x:x0/bw,y:y0/bh,w:(x1-x0+1)/bw,h:(y1-y0+1)/bh,cx:sx/cnt/bw,cy:sy/cnt/bh,a}); }
+  found.sort((p,q)=>q.a-p.a); const keep=found.slice(0,b.max);
+  // seguimiento: se busca cada mancha cerca de donde se predice que va a estar; las perdidas aguantan unos cuadros
+  const used=new Set(), next=[], sm=b.smooth;
+  for(const f of keep){ let best=null, bd=b.jump;
+    for(const o of blobList){ if(used.has(o.id)) continue; const dd=Math.hypot(o.cx+o.vx-f.cx,o.cy+o.vy-f.cy); if(dd<bd){ bd=dd; best=o; } }
+    if(best){ used.add(best.id); const L=(k)=>best[k]*sm+f[k]*(1-sm);
+      next.push({...f,id:best.id,vx:f.cx-best.cx,vy:f.cy-best.cy,x:L("x"),y:L("y"),w:L("w"),h:L("h"),cx:L("cx"),cy:L("cy"),age:best.age+1,lost:0}); }
+    else next.push({...f,id:blobNext++,vx:0,vy:0,age:0,lost:0}); }
+  for(const o of blobList) if(!used.has(o.id)&&o.lost<b.persist) next.push({...o,cid:-1,lost:o.lost+1,cx:o.cx+o.vx,cy:o.cy+o.vy,x:o.x+o.vx,y:o.y+o.vy});
+  blobList=next;
+  const live=new Set(blobList.map(f=>f.id));
+  for(const f of blobList){ const t=blobTrails.get(f.id)||[]; t.push([f.cx,f.cy]); while(t.length>Math.max(1,b.trail)) t.shift(); blobTrails.set(f.id,t); }
+  for(const k of [...blobTrails.keys()]) if(!live.has(k)) blobTrails.delete(k);
+  const keepC=new Map(blobList.filter(f=>f.cid>0).map(f=>[f.cid,f]));
+  blobMask=new Uint8Array(n); blobLab=new Int32Array(n);
+  for(let i=0;i<n;i++){ const f=keepC.get(lab[i]); if(f){ blobMask[i]=1; blobLab[i]=f.id; } }
+  blobDims=[bw,bh];
+}
+const BLOB_INKS=["#ffb547","#0078bf","#ff48b0","#00a95c","#ff6c2f","#765ba7","#ffe800","#00838a"];
+function blobColor(b,id){ return b.colMode==="ids"?BLOB_INKS[(id-1)%BLOB_INKS.length]:find(HUDCOLS,b.col)[2]; }
+const hashf=(a,b)=>{ const s=Math.sin(a*12.9898+b*78.233)*43758.5453; return s-Math.floor(s); };
+// máscara chica coloreada: "fill" pinta las manchas, "edge" solo el borde; se escala sin suavizar (celdas) o suavizada
+function paintMask(b,mode,alpha){
+  const [bw,bh]=blobDims; if(bm.width!==bw||bm.height!==bh){ bm.width=bw; bm.height=bh; }
+  const img=bmx.createImageData(bw,bh), a=img.data, cache=new Map(), A=Math.round(alpha*255);
+  for(let y=0;y<bh;y++) for(let x=0;x<bw;x++){ const i=y*bw+x, id=blobLab[i]; if(!id) continue;
+    if(mode==="edge"&&x>0&&y>0&&x<bw-1&&y<bh-1&&blobLab[i-1]===id&&blobLab[i+1]===id&&blobLab[i-bw]===id&&blobLab[i+bw]===id) continue;
+    let c=cache.get(id); if(!c){ c=hex3(blobColor(b,id)).map(v=>Math.round(v*255)); cache.set(id,c); }
+    a[i*4]=c[0]; a[i*4+1]=c[1]; a[i*4+2]=c[2]; a[i*4+3]=A; }
+  bmx.putImageData(img,0,0); return bm;
+}
+function drawBlobs(x,W,H,b,seed){
+  if(!blobMask) return;
+  const u=Math.min(W,H)/1080, lw=Math.max(1.5,b.lw*2.6*u);
+  const list=blobList.map(f=>({...f,X:f.x*W,Y:f.y*H,Wd:f.w*W,Hd:f.h*H,CX:f.cx*W,CY:f.cy*H,al:f.lost?1-f.lost/(b.persist+1):1,col:blobColor(b,f.id)}));
+  x.save();
+  // relleno: el efecto se arma en un lienzo aparte y se recorta con la forma de las cajas o de las manchas
+  if(b.fill!=="none"&&list.some(f=>!f.lost)){
+    if(bfx.width!==W||bfx.height!==H){ bfx.width=W; bfx.height=H; bmk.width=W; bmk.height=H; }
+    const f=bfxx, amt=b.famt; f.save(); f.globalCompositeOperation="source-over"; f.globalAlpha=1; f.filter="none"; f.clearRect(0,0,W,H);
+    switch(b.fill){
+      case "invert": f.drawImage(out,0,0); f.globalCompositeOperation="difference"; f.fillStyle="#fff"; f.fillRect(0,0,W,H); break;
+      case "pixel": { const s=Math.max(2,Math.round((4+amt*56)*u)), sw=Math.max(1,Math.round(W/s)), sh=Math.max(1,Math.round(H/s));
+        f.imageSmoothingEnabled=true; f.drawImage(out,0,0,sw,sh); f.imageSmoothingEnabled=false; f.drawImage(bfx,0,0,sw,sh,0,0,W,H); f.imageSmoothingEnabled=true; break; }
+      case "tint": f.drawImage(out,0,0); f.globalCompositeOperation="source-atop"; f.globalAlpha=0.25+amt*0.6;
+        for(const g of list) if(!g.lost){ f.fillStyle=g.col; f.fillRect(g.X,g.Y,g.Wd,g.Hd); } break;
+      case "blur": f.filter=`blur(${(3+amt*30)*u}px)`; f.drawImage(out,0,0); break;
+      case "glitch": { const n=8+Math.round(amt*30);
+        for(let k=0;k<n;k++){ const y0=Math.floor(H*k/n), h=Math.ceil(H/n)+1, dx=(hashf(k,seed)-0.5)*amt*120*u; f.drawImage(out,0,y0,W,h,dx,y0,W,h); }
+        f.globalCompositeOperation="screen"; f.globalAlpha=0.5; f.filter="hue-rotate(90deg)"; f.drawImage(bfx,(4+amt*10)*u,0); break; }
+      case "zoom": { const z=1.6+amt*2.4;
+        for(const g of list){ if(g.lost) continue; const sw=g.Wd/z, sh=g.Hd/z; f.drawImage(out,g.CX-sw/2,g.CY-sh/2,sw,sh,g.X,g.Y,g.Wd,g.Hd); } break; }
+      case "spot": f.fillStyle=`rgba(5,6,8,${0.45+amt*0.5})`; f.fillRect(0,0,W,H); break;
+    }
+    f.restore();
+    // forma: cajas o la mancha real (suavizada); en "Foco" se recorta lo de afuera
+    const mk=bmkx; mk.save(); mk.clearRect(0,0,W,H); mk.fillStyle="#fff";
+    if(b.fshape==="mask"){ mk.imageSmoothingEnabled=true; mk.filter=`blur(${2*u}px)`; mk.drawImage(paintMask({...b,colMode:"single",col:"cream"},"fill",1),0,0,W,H); mk.filter="none"; }
+    else for(const g of list) if(!g.lost) mk.fillRect(g.X,g.Y,g.Wd,g.Hd);
+    mk.restore();
+    bfxx.save(); bfxx.globalCompositeOperation=b.fill==="spot"?"destination-out":"destination-in"; bfxx.drawImage(bmk,0,0); bfxx.restore();
+    x.drawImage(bfx,0,0);
+  }
+  // máscara como celdas (sin suavizar) o mancha suave
+  if(b.view!=="none"){ x.imageSmoothingEnabled=b.view==="soft"; x.globalAlpha=b.view==="soft"?0.45:0.3; x.drawImage(paintMask(b,"fill",1),0,0,W,H); x.globalAlpha=1; x.imageSmoothingEnabled=true; }
+  // estelas
+  if(b.trail>1){ x.lineWidth=lw; x.lineCap="round";
+    for(const g of list){ const t=blobTrails.get(g.id); if(!t||t.length<2) continue; x.strokeStyle=g.col;
+      for(let i=1;i<t.length;i++){ x.globalAlpha=(i/t.length)*g.al; x.beginPath(); x.moveTo(t[i-1][0]*W,t[i-1][1]*H); x.lineTo(t[i][0]*W,t[i][1]*H); x.stroke(); } }
+    x.globalAlpha=1; }
+  // uniones
+  if(b.links!=="none"&&list.length){ x.lineWidth=lw*0.8; const D=b.linkDist*Math.hypot(W,H), seg=(p,q,al)=>{ x.globalAlpha=al; x.strokeStyle=p.col; x.beginPath(); x.moveTo(p.CX,p.CY); x.lineTo(q.CX,q.CY); x.stroke(); };
+    if(b.links==="chain"){ const s=[...list].sort((p,q)=>p.CX-q.CX); for(let i=1;i<s.length;i++) seg(s[i-1],s[i],0.75*s[i].al); }
+    else if(b.links==="near"){ for(const p of list){ let o=null, bd=1e9; for(const q of list){ if(q===p) continue; const dd=Math.hypot(q.CX-p.CX,q.CY-p.CY); if(dd<bd){ bd=dd; o=q; } } if(o) seg(p,o,0.75*p.al); } }
+    else if(b.links==="center"){ const c={CX:W/2,CY:H/2}; for(const p of list) seg(p,c,0.6*p.al); }
+    else { for(let i=0;i<list.length;i++) for(let j=i+1;j<list.length;j++){ const dd=Math.hypot(list[i].CX-list[j].CX,list[i].CY-list[j].CY);
+      if(dd<=D) seg(list[i],list[j],(b.links==="plexus"?1-dd/D:0.75)*Math.min(list[i].al,list[j].al)); } }
+    x.globalAlpha=1; }
+  // contorno real de cada mancha
+  if(b.style==="contour"){ x.imageSmoothingEnabled=false; x.drawImage(paintMask(b,"edge",1),0,0,W,H); x.imageSmoothingEnabled=true; }
+  x.lineWidth=lw;
+  for(const g of list){
+    x.globalAlpha=g.al; x.strokeStyle=g.col; x.beginPath();
+    if(b.style==="rect") x.rect(g.X,g.Y,g.Wd,g.Hd);
+    else if(b.style==="corners"){ const l=Math.min(g.Wd,g.Hd)*0.3;
+      for(const [cx,cy,sx,sy] of [[g.X,g.Y,1,1],[g.X+g.Wd,g.Y,-1,1],[g.X+g.Wd,g.Y+g.Hd,-1,-1],[g.X,g.Y+g.Hd,1,-1]]){ x.moveTo(cx,cy+sy*l); x.lineTo(cx,cy); x.lineTo(cx+sx*l,cy); } }
+    else if(b.style==="circle") x.ellipse(g.CX,g.CY,Math.max(2,g.Wd/2),Math.max(2,g.Hd/2),0,0,Math.PI*2);
+    else if(b.style==="cross"){ const l=20*u; x.moveTo(g.CX-l,g.CY); x.lineTo(g.CX+l,g.CY); x.moveTo(g.CX,g.CY-l); x.lineTo(g.CX,g.CY+l); x.rect(g.CX-l*0.45,g.CY-l*0.45,l*0.9,l*0.9); }
+    x.stroke();
+  }
+  x.globalAlpha=1;
+  // etiquetas
+  if(b.labels!=="none"){ const fs=Math.round(20*u*b.lsize); x.font=`500 ${fs}px "Martian Mono",ui-monospace,monospace`; x.textBaseline="bottom"; x.textAlign="left";
+    for(const g of list){ let s=(b.ltext?b.ltext.toUpperCase()+" ":"")+String(g.id).padStart(3,"0");
+      if(b.labels==="coords"||b.labels==="full") s+="  "+g.cx.toFixed(2)+" "+g.cy.toFixed(2);
+      if(b.labels==="full") s+="  A"+(g.a*100).toFixed(1)+"%  V"+(Math.hypot(g.vx,g.vy)*100).toFixed(1);
+      x.globalAlpha=g.al; x.fillStyle=g.col; x.fillText(s,g.X,g.Y-3*u); }
+    x.globalAlpha=1; }
+  // panel de datos
+  if(b.panel){ const fs=Math.round(20*u*b.lsize), lh=fs*1.5, m=Math.round(40*u), rows=list.filter(f=>!f.lost).slice(0,8);
+    x.font=`500 ${fs}px "Martian Mono",ui-monospace,monospace`; x.textAlign="right"; x.textBaseline="top"; x.fillStyle=find(HUDCOLS,b.col)[2];
+    x.fillText("TRACKING · "+String(rows.length).padStart(2,"0"),W-m,m);
+    rows.forEach((f,i)=>{ x.fillStyle=f.col; x.fillText(String(f.id).padStart(3,"0")+"  "+f.cx.toFixed(2)+" "+f.cy.toFixed(2)+"  "+(f.a*100).toFixed(1)+"%",W-m,m+lh*(i+1.3)); }); }
   x.restore();
 }
 
 /* ---------- pestaña Movimiento ---------- */
 let picking=false;
-$("pickBtn").addEventListener("click",()=>{ if(cur<0) return; picking=true; video.pause(); syncUI(); toast("Tocá en la imagen el punto que querés seguir.",4000); });
+$("pickBtn").addEventListener("click",()=>{ if(cur<0) return; picking="point"; video.pause(); syncUI(); toast("Tocá en la imagen el punto que querés seguir.",4000); });
 $("clearPt").addEventListener("click",()=>{ if(cur<0) return; const m=motionOf(items[cur]); m.pt=null; picking=false; dirty=true; syncUI(); });
+$("pickColor").addEventListener("click",()=>{ if(cur<0) return; picking="color"; if(!video.paused) video.pause(); syncUI(); toast("Tocá en la imagen el color que querés seguir.",4000); });
 function pickAt(e){
-  picking=false; const it=items[cur]; if(!it||it.kind!=="vid") return syncUI();
+  const mode=picking; picking=false; const it=items[cur]; $("hint").classList.add("off");
   const r=view.getBoundingClientRect(), s=Math.min(r.width/view.width,r.height/view.height);
   const ox=(e.clientX-r.left-(r.width-view.width*s)/2)/s, oy=(e.clientY-r.top-(r.height-view.height*s)/2)/s;
-  if(ox<0||oy<0||ox>view.width||oy>view.height){ syncUI(); return; }
+  if(!it||ox<0||oy<0||ox>view.width||oy>view.height){ syncUI(); return; }
+  if(mode==="color"){ // se toma del cuadro antes del revelado, promediando 5×5
+    const x0=clamp(Math.round(ox*comp.width/view.width)-2,0,comp.width-5), y0=clamp(Math.round(oy*comp.height/view.height)-2,0,comp.height-5);
+    const d=cctx.getImageData(x0,y0,5,5).data; let R=0,Gc=0,B=0; for(let i=0;i<d.length;i+=4){ R+=d[i]; Gc+=d[i+1]; B+=d[i+2]; }
+    const [h,sat]=rgb2hsv(R/25/255,Gc/25/255,B/25/255);
+    Object.assign(L.blobs,{on:true,src:"color",hue:Math.round(h),smin:+Math.max(0.12,sat*0.6).toFixed(2)}); lookChanged();
+    toast(sat<0.12?"Ese color es casi gris: el seguimiento por color va a ser débil.":"Color tomado: "+Math.round(h)+"°",2500); return; }
+  if(it.kind!=="vid") return syncUI();
   const p=toSrc(viewAt(it,video.currentTime),view.width,view.height,{x:ox,y:oy});
   const m=motionOf(it); m.pt={t:video.currentTime,x:clamp(p.x,0,it.w),y:clamp(p.y,0,it.h)}; m.marker=true;
   runAnalysis(it);
@@ -1168,7 +1350,7 @@ function lockReach(it){
 }
 function motionNotes(it){
   const m=motionOf(it), A=it.analysis;
-  $("ptNote").textContent=picking?"Tocá el punto en la imagen…":m.pt?"Punto en "+fmtS(m.pt.t)+(analysisReady(it)&&A.track?" · seguido en el "+Math.round(A.track.cov*100)+"% de los cuadros":" · falta analizar"):"Sin punto. Pausá en el cuadro donde se ve bien lo que querés seguir y tocá Elegir punto.";
+  $("ptNote").textContent=picking==="point"?"Tocá el punto en la imagen…":m.pt?"Punto en "+fmtS(m.pt.t)+(analysisReady(it)&&A.track?" · seguido en el "+Math.round(A.track.cov*100)+"% de los cuadros":" · falta analizar"):"Sin punto. Pausá en el cuadro donde se ve bien lo que querés seguir y tocá Elegir punto.";
   const dur=Math.max(0,it.trim[1]-it.trim[0])/m.speed, need=needsTrack(m)||needsCam(m);
   $("motionNote").textContent="Salida: "+dur.toFixed(1)+" s a "+G.fps+" fps"+(m.speed>1?" (×"+m.speed+", sin audio)":"")+". "+
     (need?(analysisReady(it)?"Análisis listo.":"El análisis se hace al exportar, o tocá Analizar para verlo en la vista previa."):"")+
@@ -1204,7 +1386,7 @@ async function exportVideo(it,preview){
   const res=await FrameExport.run({video,file:it.file,fps,canvas:out,start:it.trim[0],end:it.trim[1],noAudio:preview,speed:m.speed,
     process:async(t,i,st)=>{
       let curCut=null;
-      const view=viewAt(it,st), opts={seed:seed++,t:st-it.trim[0],frame:i,srcT:st,view,prepared:true,blobKey:i};
+      const view=viewAt(it,st), opts={seed:seed++,t:st-it.trim[0],frame:i,srcT:st,view,prepared:true,blobKey:i,blobFrame:i};
       // el cuadro encuadrado (estabilizado o centrado en el punto); en hyperlapse se promedian cuadros intermedios
       if(comp.width!==W||comp.height!==H){ comp.width=W; comp.height=H; }
       drawView(cctx,video,W,H,view);
@@ -1295,7 +1477,10 @@ function syncUI(){
   document.querySelectorAll(".tab").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===activeTab)));
   ["looks","layers","format","video","motion"].forEach(t=>$("panel-"+t).hidden=t!==activeTab);
   if(isVid) motionNotes(it);
-  $("hint").textContent=picking?"Tocá el punto a seguir":"Mantené apretado para ver el original"; if(picking) $("hint").classList.remove("off");
+  document.querySelectorAll("[data-when]").forEach(el=>{ const m=el.dataset.when.match(/^([\w.]+)([=!~])(.+)$/), v=String(getK(m[1]));
+    el.hidden=m[2]==="="?v!==m[3]:m[2]==="!"?v===m[3]:!m[3].split(" ").includes(v); });
+  $("hueSw").style.background=`hsl(${L.blobs.hue},85%,55%)`;
+  $("hint").textContent=picking==="color"?"Tocá el color a seguir":picking?"Tocá el punto a seguir":"Mantené apretado para ver el original"; if(picking) $("hint").classList.remove("off");
   document.querySelectorAll(".look").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.name===lookName)));
   if(it){ $("zoom").value=it.crop.zoom; paintRange($("zoom")); $("zoomV").textContent=it.crop.zoom.toFixed(2)+"×";
     const [W,H]=outSize(it,cropRect(it)); $("sizeNote").textContent="Salida: "+W+"×"+H+" px"+(isVid?" · video hasta 1080p":"")+".";
